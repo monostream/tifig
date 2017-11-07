@@ -1,0 +1,9 @@
+[submodule "lib/heif"]
+	path = lib/heif
+	url = https://github.com/pedernot/heif.git
+[submodule "lib/cxxopts"]
+	path = lib/cxxopts
+	url = https://github.com/jarro2783/cxxopts.git
+[submodule "lib/easyexif"]
+	path = lib/easyexif
+	url = https://github.com/mayanklahiri/easyexif.git

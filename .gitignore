@@ -1,0 +1,22 @@
+
+.DS_Store
+
+# Cmake
+CMakeCache.txt
+CMakeFiles
+Makefile
+cmake_install.cmake
+cmake-build-*
+build/
+compile_commands.json
+
+# Binary
+heifthumb
+heifthumb.cbp
+
+# IDE files
+*.user
+*.idea
+
+# Llama stuff
+thumb.bmp
