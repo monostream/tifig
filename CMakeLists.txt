@@ -2,10 +2,14 @@ cmake_minimum_required(VERSION 3.5)
 
 project(tifig)
 
+set(CMAKE_CXX_STANDARD 11)
+
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_MODULE_PATH})
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+
 find_package(PkgConfig)
 pkg_search_module(VIPS REQUIRED vips-cpp)
-
-set(CMAKE_CXX_STANDARD 11)
+find_package(LibAV REQUIRED)
 
 #set(CMAKE_VERBOSE_MAKEFILE ON)
 
@@ -33,4 +37,4 @@ include_directories(lib/easyexif)
 include_directories(${VIPS_INCLUDE_DIRS})
 
 target_link_libraries(${TIFIG} heifreader cxxopts)
-target_link_libraries(${TIFIG} ${VIPS_CFLAGS} ${VIPS_LDFLAGS})
+target_link_libraries(${TIFIG} ${VIPS_CFLAGS} ${VIPS_LDFLAGS} ${LIBAV_LIBRARIES})

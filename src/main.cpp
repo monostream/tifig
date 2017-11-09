@@ -6,6 +6,13 @@
 #include <vips/vips8>
 #include <unistd.h>
 
+
+extern "C" {
+    #include <libavutil/opt.h>
+    #include <libavcodec/avcodec.h>
+    #include <libavutil/common.h>
+};
+
 using namespace std;
 using namespace vips;
 
@@ -99,7 +106,7 @@ ImageFileReaderInterface::DataVector extractHEVCData(HevcImageFileReader *reader
 
     reader->getItemData(contextId, itemId, itemData);
 
-    dataWithDecoderParams.insert(dataWithDecoderParams.end(), itemData.begin() + 1, itemData.end());
+    dataWithDecoderParams.insert(dataWithDecoderParams.end(), itemData.begin(), itemData.end());
 
     return dataWithDecoderParams;
 }
@@ -127,6 +134,89 @@ void writeHevcDataToFile(ImageFileReaderInterface::DataVector *hevcData, string 
 
     hevcFile.close();
 }
+
+/**
+ * Decode HEVC Frame using libav
+ * @param hevcData
+ * @return
+ */
+AVFrame* decodeHEVCFrame(ImageFileReaderInterface::DataVector& hevcData) {
+    AVCodec *codec = avcodec_find_decoder(AV_CODEC_ID_HEVC);
+    AVCodecContext *c;
+    AVFrame *frame;
+    AVPacket avpkt;
+
+    c = avcodec_alloc_context3(codec);
+
+    if (!c) {
+        throw logic_error("Could not allocate video codec context");
+    }
+
+    frame = av_frame_alloc();
+    if (!frame) {
+        throw logic_error("Could not allocate frame");
+    }
+
+    if (avcodec_open2(c, codec, NULL) < 0) {
+        throw logic_error("Could not open codec");
+    }
+
+    av_init_packet(&avpkt);
+
+    avpkt.size = hevcData.size();
+    avpkt.data = &hevcData[0];
+
+    int success;
+
+    int len = avcodec_decode_video2(c, frame, &success, &avpkt);
+
+    if (len < 0 || !success) {
+        throw logic_error("Failed to decode frame");
+    }
+
+    avcodec_close(c);
+    av_free(c);
+
+    return frame;
+}
+
+/**
+ * Encode AVFrame as JPEG Image
+ * @param frame
+ * @return
+ */
+AVPacket* encodeAVFrameToJPEG(AVFrame * frame) {
+    AVCodec *jpegCodec = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
+    AVCodecContext *jpegContext = avcodec_alloc_context3(jpegCodec);
+    AVFrame *jf = av_frame_alloc();
+
+    jpegContext->width = frame->width;
+    jpegContext->height = frame->height;
+    jpegContext->pix_fmt = AV_PIX_FMT_YUVJ420P;
+    jpegContext->time_base.num = 1;
+    jpegContext->time_base.den = 1;
+
+    if (avcodec_open2(jpegContext, jpegCodec, NULL) < 0) {
+        throw logic_error("Could not open JPEG codec");
+    }
+
+    AVPacket jpegPacket = { .data = NULL, .size = 0};
+    av_init_packet(&jpegPacket);
+
+    int success;
+    int length = avcodec_encode_video2(jpegContext, &jpegPacket, frame, &success);
+
+    if (length < 0 || !success) {
+        throw logic_error("Failed to encode frame to JPEG");
+    }
+
+    avcodec_close(jpegContext);
+    av_free(jpegContext);
+
+    return &jpegPacket;
+}
+
+
 
 /**
  * Extract EXIF data from HEIF
@@ -191,6 +281,7 @@ VImage buildFullImage(int width, int height, int columns, vector<string> tiles)
     return combined;
 }
 
+
 /**
  *
  * @param inputFilename
@@ -221,31 +312,36 @@ int exportThumbnail(string inputFilename, string outputFilename) {
     // Extract & decode thumbnail
     ImageFileReaderInterface::DataVector hevcData = extractHEVCData(&reader, &decoderParams, contextId, thmbId);
 
-    string hevcFile = TEMP_DIR + "/thmb.hevc";
-    string jpegFile = TEMP_DIR + "/thmb.jpg";
 
-    writeHevcDataToFile(&hevcData, hevcFile);
 
-    string ffmpegCall = "ffmpeg -i " + hevcFile + " -loglevel panic -frames:v 1 -y " + jpegFile;
+    // Decode HEVC Frame
+    AVFrame* frame = decodeHEVCFrame(hevcData);
 
-    int ffmpegResult = system(ffmpegCall.c_str());
 
-    if (ffmpegResult != 0)
-    {
-        cerr << "Decoding thumbnail failed" << endl;
-        return ffmpegResult;
-    }
 
-    // Load image and save with orientation
+    // Encode frame to jpeg
+    AVPacket *jpegData = encodeAVFrameToJPEG(frame);
 
-    VImage result = VImage::new_from_file(jpegFile.c_str());
 
-    result.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
+    // Read data with vips
 
-    result.jpegsave(const_cast<char *>(outputFilename.c_str()), VImage::option()->set("Q", QUALITY));
+    VImage thumbJpg = VImage::new_from_buffer(jpegData->data, jpegData->size, NULL);
+
+    cout << thumbJpg.width() << "x" << thumbJpg.height();
+
+    thumbJpg.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
+
+    thumbJpg.jpegsave(const_cast<char *>(outputFilename.c_str()), VImage::option()->set("Q", QUALITY));
+
+    // cleanup
+
+    av_free(frame);
 
     return 0;
 }
+
+
+
 
 /**
  *
@@ -368,6 +464,8 @@ int main(int argc, char* argv[])
     int retval = -1;
 
     VIPS_INIT(argv[0]);
+
+    avcodec_register_all();
 
     string tempTemplate = "/tmp/heif.XXXXXX";
     TEMP_DIR = mkdtemp(const_cast<char *>(tempTemplate.c_str()));
