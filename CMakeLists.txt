@@ -5,11 +5,10 @@ project(tifig)
 set(CMAKE_CXX_STANDARD 11)
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_MODULE_PATH})
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
+find_package(LibAV REQUIRED)
 find_package(PkgConfig)
 pkg_search_module(VIPS REQUIRED vips-cpp)
-find_package(LibAV REQUIRED)
 
 #set(CMAKE_VERBOSE_MAKEFILE ON)
 
