@@ -4,9 +4,9 @@ Converts HEIF images created on iOS 11 devices to JPEG as fast as possible.
 
 *This project is an early alpha and still needs a lot of tweaking!*
 
-## Dependencies
+## Build Dependencies
 
- * `ffmpeg` >= 3.3
+ * `libav` >= 12.2
  * `libvips` >= 8.3
 
 ## Usage
@@ -25,21 +25,26 @@ make
 ### Usage
 
 ```
-tifig -v -q 75 image.heic output.jpg 
+# tifig -v image.heic output.jpg # get the full picture
+
+```
+
+```
+# tifig -v -t image.heic thumbnail.jpg # get the embedded thumbnail
+
 ```
 
 ## ToDo's
 
   * Testing 
-  * Create independant static binary 
-  * Improve conversation by using libAV directly 
+  * Create independant static binary
   * Cleanup and optimizing 
   
 ## Software Used / Libraries
 
   * HEIF by Nokia Technologies https://github.com/nokiatech/heif
   * libvips https://github.com/jcupitt/libvips
-  * FFmpeg https://github.com/FFmpeg/FFmpeg
+  * libav http://www.libav.org
   * easyexif https://github.com/mayanklahiri/easyexif
   * cxxopts https://github.com/jarro2783/cxxopts
   
