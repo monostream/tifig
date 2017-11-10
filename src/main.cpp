@@ -255,7 +255,7 @@ easyexif::EXIFInfo extractExifData(HevcImageFileReader *reader, uint32_t context
  * @param columns
  * @param tiles
  */
-VImage buildFullImage(int width, int height, int columns, vector<string> tiles)
+VImage buildFullImage(int width, int height, int columns, vector<AVPacket> tiles)
 {
     const int tileSize = 512; // FIXME: Do we really need to hardcode this?;
 
@@ -265,8 +265,7 @@ VImage buildFullImage(int width, int height, int columns, vector<string> tiles)
     int offsetY = 0;
 
     for (int i = 0; i < tiles.size(); i++) {
-        VImage in = VImage::new_from_file(tiles[i].c_str());
-
+        VImage in = VImage::new_from_buffer(tiles[i].data, tiles[i].size, NULL);
         combined = combined.insert(in, offsetX, offsetY);
 
         if ((i + 1) % columns == 0) {
@@ -308,23 +307,16 @@ int exportThumbnail(string inputFilename, string outputFilename) {
     // Configure decoder
     const auto& decoderParams = getDecoderParams(&reader, contextId, thmbId);
 
-
     // Extract & decode thumbnail
     ImageFileReaderInterface::DataVector hevcData = extractHEVCData(&reader, &decoderParams, contextId, thmbId);
-
-
 
     // Decode HEVC Frame
     AVFrame* frame = decodeHEVCFrame(hevcData);
 
-
-
     // Encode frame to jpeg
     AVPacket *jpegData = encodeAVFrameToJPEG(frame);
 
-
     // Read data with vips
-
     VImage thumbJpg = VImage::new_from_buffer(jpegData->data, jpegData->size, NULL);
 
     cout << thumbJpg.width() << "x" << thumbJpg.height();
@@ -334,7 +326,6 @@ int exportThumbnail(string inputFilename, string outputFilename) {
     thumbJpg.jpegsave(const_cast<char *>(outputFilename.c_str()), VImage::option()->set("Q", QUALITY));
 
     // cleanup
-
     av_free(frame);
 
     return 0;
@@ -352,7 +343,6 @@ int exportThumbnail(string inputFilename, string outputFilename) {
 int convertToJpeg(string inputFilename, string outputFilename) {
 
     HevcImageFileReader reader;
-
     reader.initialize(inputFilename);
     const uint32_t contextId = reader.getFileProperties().rootLevelMetaBoxProperties.contextId;
 
@@ -386,33 +376,19 @@ int convertToJpeg(string inputFilename, string outputFilename) {
     // Extract and decode all tiles
     chrono::steady_clock::time_point begin_encode = chrono::steady_clock::now();
 
-    string ffmpegInvokes;
-
-    vector<string> tilePaths;
+    vector<AVPacket> tileJpegs;
 
     for (auto &tileItemId : tileItemIds) {
-        string hevcTile = TEMP_DIR + "/tile" + to_string(tileItemId) + ".hevc";
-        string jpegTile =  TEMP_DIR + "/tile" + to_string(tileItemId) + ".jpg";
 
         ImageFileReaderInterface::DataVector hevcData = extractHEVCData(&reader, &decoderParams, contextId, tileItemId);
-        writeHevcDataToFile(&hevcData, hevcTile);
 
-        string ffmpegCall = "ffmpeg -i " + hevcTile + " -loglevel panic -frames:v 1 -q:v 1 -y " + jpegTile + " & ";
+        AVFrame* frame = decodeHEVCFrame(hevcData);
 
-        tilePaths.push_back(jpegTile);
+        AVPacket *jpegData = encodeAVFrameToJPEG(frame);
 
-        ffmpegInvokes += ffmpegCall;
+        tileJpegs.push_back(*jpegData);
     }
 
-    ffmpegInvokes += "wait";
-
-    int ffmpegResult = system(ffmpegInvokes.c_str());
-
-    if (ffmpegResult != 0)
-    {
-        cerr << "Decoding tiles failed" << endl;
-        return ffmpegResult;
-    }
 
     chrono::steady_clock::time_point end_encode = chrono::steady_clock::now();
     long tileEncodeTime = chrono::duration_cast<chrono::milliseconds>(end_encode - begin_encode).count();
@@ -426,7 +402,7 @@ int convertToJpeg(string inputFilename, string outputFilename) {
 
     chrono::steady_clock::time_point begin_buildImage = chrono::steady_clock::now();
 
-    VImage result = buildFullImage(width, height, columns, tilePaths);
+    VImage result = buildFullImage(width, height, columns, tileJpegs);
 
     result.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
 
