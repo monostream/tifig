@@ -111,29 +111,7 @@ ImageFileReaderInterface::DataVector extractHEVCData(HevcImageFileReader *reader
     return dataWithDecoderParams;
 }
 
-/**
- * Extract HEVC data stream to file
- * @param reader
- * @param decoderParams
- * @param tileFileName
- * @param contextId
- * @param tileItemId
- * @return
- */
-void writeHevcDataToFile(ImageFileReaderInterface::DataVector *hevcData, string hevcFileName)
-{
-    ofstream hevcFile(hevcFileName);
-    if (!hevcFile.is_open()) {
-        throw logic_error("Could not open " + hevcFileName + " for writing HEVC");
-    }
 
-    hevcFile.write((char *) &((*hevcData)[0]), hevcData->size());
-    if (hevcFile.bad()) {
-        throw logic_error("failed to write to " + hevcFileName);
-    }
-
-    hevcFile.close();
-}
 
 /**
  * Decode HEVC Frame using libav
@@ -181,41 +159,41 @@ AVFrame* decodeHEVCFrame(ImageFileReaderInterface::DataVector& hevcData) {
 }
 
 /**
- * Encode AVFrame as JPEG Image
+ * Encode AVFrame as PPM Image
  * @param frame
  * @return
  */
-AVPacket* encodeAVFrameToJPEG(AVFrame * frame) {
-    AVCodec *jpegCodec = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
-    AVCodecContext *jpegContext = avcodec_alloc_context3(jpegCodec);
+AVPacket* encodeAVFrameToPPM(AVFrame *frame) {
+    AVCodec *ppmCodec = avcodec_find_encoder(AV_CODEC_ID_PPM);
+    AVCodecContext *context = avcodec_alloc_context3(ppmCodec);
     AVFrame *jf = av_frame_alloc();
 
-    jpegContext->width = frame->width;
-    jpegContext->height = frame->height;
-    jpegContext->pix_fmt = AV_PIX_FMT_YUVJ420P;
-    jpegContext->time_base.num = 1;
-    jpegContext->time_base.den = 1;
+    context->width = frame->width;
+    context->height = frame->height;
+    context->pix_fmt = AV_PIX_FMT_RGB32;
+    context->time_base.num = 1;
+    context->time_base.den = 1;
 
-    if (avcodec_open2(jpegContext, jpegCodec, NULL) < 0) {
-        throw logic_error("Could not open JPEG codec");
+    if (avcodec_open2(context, ppmCodec, NULL) < 0) {
+        throw logic_error("Could not open PPM codec");
     }
 
-    AVPacket* jpegPacket = new AVPacket();
-    av_init_packet(jpegPacket);
-    jpegPacket->data = NULL;
-    jpegPacket->size = 0;
+    AVPacket* packet = new AVPacket();
+    av_init_packet(packet);
+    packet->data = NULL;
+    packet->size = 0;
 
     int success;
-    int length = avcodec_encode_video2(jpegContext, jpegPacket, frame, &success);
+    int length = avcodec_encode_video2(context, packet, frame, &success);
 
     if (length < 0 || !success) {
-        throw logic_error("Failed to encode frame to JPEG");
+        throw logic_error("Failed to encode frame to PPM");
     }
 
-    avcodec_close(jpegContext);
-    av_free(jpegContext);
+    avcodec_close(context);
+    av_free(context);
 
-    return jpegPacket;
+    return packet;
 }
 
 
@@ -257,7 +235,7 @@ easyexif::EXIFInfo extractExifData(HevcImageFileReader *reader, uint32_t context
  * @param columns
  * @param tiles
  */
-VImage buildFullImage(int width, int height, int columns, vector<AVPacket> tiles)
+VImage buildFullImage(int width, int height, int columns, vector<AVPacket*> tiles)
 {
     const int tileSize = 512; // FIXME: Do we really need to hardcode this?;
 
@@ -267,16 +245,28 @@ VImage buildFullImage(int width, int height, int columns, vector<AVPacket> tiles
     int offsetY = 0;
 
     for (int i = 0; i < tiles.size(); i++) {
-        VImage in = VImage::new_from_buffer(tiles[i].data, tiles[i].size, NULL);
-        combined = combined.insert(in, offsetX, offsetY);
 
-        if ((i + 1) % columns == 0) {
-            offsetY += tileSize;
-            offsetX = 0;
+        ofstream hevcFile("furz"+to_string(i)+".ppm");
+
+        if (!hevcFile.is_open()) {
+            throw logic_error("Could not open");
         }
-        else {
-            offsetX += tileSize;
-        }
+
+        hevcFile.write((char *) &tiles[i]->data[0], tiles[i]->size);
+        hevcFile.close();
+
+        //VImage in = VImage::new_from_buffer(tiles[i].data, tiles[i].size, NULL);
+//
+//        VImage in = VImage::new_from_memory(&tiles[i]->data[8], tiles[i]->size - 8, tileSize, tileSize, 3, VIPS_FORMAT_INT);
+//        combined = combined.insert(in, offsetX, offsetY);
+//
+//        if ((i + 1) % columns == 0) {
+//            offsetY += tileSize;
+//            offsetX = 0;
+//        }
+//        else {
+//            offsetX += tileSize;
+//        }
     }
 
     return combined;
@@ -316,7 +306,7 @@ int exportThumbnail(string inputFilename, string outputFilename) {
     AVFrame* frame = decodeHEVCFrame(hevcData);
 
     // Encode frame to jpeg
-    AVPacket *jpegData = encodeAVFrameToJPEG(frame);
+    AVPacket *jpegData = encodeAVFrameToPPM(frame);
 
     // Read data with vips
     VImage thumbJpg = VImage::new_from_buffer(jpegData->data, jpegData->size, NULL);
@@ -376,7 +366,7 @@ int convertToJpeg(string inputFilename, string outputFilename) {
     // Extract and decode all tiles
     chrono::steady_clock::time_point begin_encode = chrono::steady_clock::now();
 
-    vector<AVPacket> tileJpegs;
+    vector<AVPacket*> tilePPM;
 
     for (auto &tileItemId : tileItemIds) {
 
@@ -385,9 +375,9 @@ int convertToJpeg(string inputFilename, string outputFilename) {
 
         AVFrame* frame = decodeHEVCFrame(hevcData);
 
-        AVPacket *jpegData = encodeAVFrameToJPEG(frame);
+        AVPacket *ppmData = encodeAVFrameToPPM(frame);
 
-        tileJpegs.push_back(*jpegData);
+        tilePPM.push_back(ppmData);
     }
 
 
@@ -403,7 +393,7 @@ int convertToJpeg(string inputFilename, string outputFilename) {
 
     chrono::steady_clock::time_point begin_buildImage = chrono::steady_clock::now();
 
-    VImage result = buildFullImage(width, height, columns, tileJpegs);
+    VImage result = buildFullImage(width, height, columns, tilePPM);
 
     result.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
 
@@ -443,6 +433,7 @@ int main(int argc, char* argv[])
     VIPS_INIT(argv[0]);
 
     avcodec_register_all();
+    av_log_set_level(AV_LOG_TRACE);
 
     string tempTemplate = "/tmp/heif.XXXXXX";
     TEMP_DIR = mkdtemp(const_cast<char *>(tempTemplate.c_str()));
