@@ -26,12 +26,16 @@ make
 
 ```
 # tifig -v image.heic output.jpg # get the full picture
-
+Grid is 4032x3024 pixels in tiles 8x6
+Export & encode tiles 190ms
+Building image 125ms
+Total Time 324ms
 ```
 
 ```
 # tifig -v -t image.heic thumbnail.jpg # get the embedded thumbnail
-
+320x240 pixels 
+Total Time 5ms
 ```
 
 ## ToDo's
