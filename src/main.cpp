@@ -9,8 +9,9 @@
 
 extern "C" {
     #include <libavutil/opt.h>
+    #include <libavutil/imgutils.h>
     #include <libavcodec/avcodec.h>
-    #include <libavutil/common.h>
+    #include <libswscale/swscale.h>
 };
 
 using namespace std;
@@ -19,7 +20,8 @@ using namespace vips;
 
 static bool VERBOSE = false;
 static int QUALITY = 90;
-static string TEMP_DIR;
+
+static struct SwsContext* swsContext; // nice api libav! :(
 
 /**
  * Check if image has a grid configuration and return the grid id
@@ -111,91 +113,82 @@ ImageFileReaderInterface::DataVector extractHEVCData(HevcImageFileReader *reader
     return dataWithDecoderParams;
 }
 
+/**
+ * Conver colorspace of decoded frame to RGB and load vips imageS
+ * @param frame
+ * @return
+ */
+VImage loadImageFromDecodedFrame(AVFrame *frame) {
 
+    AVFrame* imgFrame = av_frame_alloc();
+    int width = frame->width;
+    int height = frame->height;
+
+    // Initialize buffer for RGB conversion
+    int imgRGB24size = avpicture_get_size(PIX_FMT_RGB24, width, height);;
+    uint8_t *tempBuffer = (uint8_t *)av_malloc(imgRGB24size);
+
+    // Prepare color space conversion
+    struct SwsContext *sws_ctx = sws_getCachedContext(swsContext,
+                                                      width, height, AV_PIX_FMT_YUV420P,
+                                                      width, height, AV_PIX_FMT_RGB24,
+                                                      0, nullptr, nullptr, nullptr);
+
+    av_image_fill_arrays(imgFrame->data, imgFrame->linesize, tempBuffer, PIX_FMT_RGB24, width, height, 1);
+    auto const * const * frameDataPtr = (uint8_t const * const *)frame->data;
+
+    // Convert YUV to RGB
+    sws_scale(sws_ctx, frameDataPtr, frame->linesize, 0, height, imgFrame->data, imgFrame->linesize);
+
+    // Move RGB data in pixel order into memory
+    uint8_t* buff = (uint8_t*) malloc(imgRGB24size);
+    const auto * const* dataPtr = (const uint8_t* const*)imgFrame->data;
+    av_image_copy_to_buffer(buff, imgRGB24size, dataPtr, imgFrame->linesize, AV_PIX_FMT_RGB24, width, height, 1);
+
+    av_free(tempBuffer);
+
+    return VImage::new_from_memory(buff, imgRGB24size, width, height, 3, VIPS_FORMAT_UCHAR);
+}
 
 /**
  * Decode HEVC Frame using libav
  * @param hevcData
  * @return
  */
-AVFrame* decodeHEVCFrame(ImageFileReaderInterface::DataVector& hevcData) {
+VImage decodeHEVCFrame(ImageFileReaderInterface::DataVector& hevcData) {
     AVCodec *codec = avcodec_find_decoder(AV_CODEC_ID_HEVC);
     AVCodecContext *c;
-    AVFrame *frame;
-    AVPacket avpkt;
 
     c = avcodec_alloc_context3(codec);
-
     if (!c) {
         throw logic_error("Could not allocate video codec context");
-    }
-
-    frame = av_frame_alloc();
-    if (!frame) {
-        throw logic_error("Could not allocate frame");
     }
 
     if (avcodec_open2(c, codec, NULL) < 0) {
         throw logic_error("Could not open codec");
     }
 
-    av_init_packet(&avpkt);
+    AVFrame *frame = av_frame_alloc();
 
+    AVPacket avpkt;
+    av_init_packet(&avpkt);
     avpkt.size = hevcData.size();
     avpkt.data = &hevcData[0];
 
     int success;
-
     int len = avcodec_decode_video2(c, frame, &success, &avpkt);
-
     if (len < 0 || !success) {
         throw logic_error("Failed to decode frame");
     }
 
+    VImage image = loadImageFromDecodedFrame(frame);
+
     avcodec_close(c);
     av_free(c);
+    av_free(frame);
 
-    return frame;
+    return image;
 }
-
-/**
- * Encode AVFrame as PPM Image
- * @param frame
- * @return
- */
-AVPacket* encodeAVFrameToPPM(AVFrame *frame) {
-    AVCodec *ppmCodec = avcodec_find_encoder(AV_CODEC_ID_PPM);
-    AVCodecContext *context = avcodec_alloc_context3(ppmCodec);
-    AVFrame *jf = av_frame_alloc();
-
-    context->width = frame->width;
-    context->height = frame->height;
-    context->pix_fmt = AV_PIX_FMT_RGB32;
-    context->time_base.num = 1;
-    context->time_base.den = 1;
-
-    if (avcodec_open2(context, ppmCodec, NULL) < 0) {
-        throw logic_error("Could not open PPM codec");
-    }
-
-    AVPacket* packet = new AVPacket();
-    av_init_packet(packet);
-    packet->data = NULL;
-    packet->size = 0;
-
-    int success;
-    int length = avcodec_encode_video2(context, packet, frame, &success);
-
-    if (length < 0 || !success) {
-        throw logic_error("Failed to encode frame to PPM");
-    }
-
-    avcodec_close(context);
-    av_free(context);
-
-    return packet;
-}
-
 
 
 /**
@@ -235,9 +228,13 @@ easyexif::EXIFInfo extractExifData(HevcImageFileReader *reader, uint32_t context
  * @param columns
  * @param tiles
  */
-VImage buildFullImage(int width, int height, int columns, vector<AVPacket*> tiles)
+VImage buildFullImage(int width, int height, int columns, vector<VImage> tiles)
 {
-    const int tileSize = 512; // FIXME: Do we really need to hardcode this?;
+    if (tiles.size() == 0) {
+        throw logic_error("No tiles given to build image");
+    }
+
+    const int tileSize = tiles.at(0).width();
 
     VImage combined = VImage::new_matrix(width, height);
 
@@ -246,27 +243,17 @@ VImage buildFullImage(int width, int height, int columns, vector<AVPacket*> tile
 
     for (int i = 0; i < tiles.size(); i++) {
 
-        ofstream hevcFile("furz"+to_string(i)+".ppm");
+        VImage in = tiles.at(i);
 
-        if (!hevcFile.is_open()) {
-            throw logic_error("Could not open");
+        combined = combined.insert(in, offsetX, offsetY);
+
+        if ((i + 1) % columns == 0) {
+            offsetY += tileSize;
+            offsetX = 0;
         }
-
-        hevcFile.write((char *) &tiles[i]->data[0], tiles[i]->size);
-        hevcFile.close();
-
-        //VImage in = VImage::new_from_buffer(tiles[i].data, tiles[i].size, NULL);
-//
-//        VImage in = VImage::new_from_memory(&tiles[i]->data[8], tiles[i]->size - 8, tileSize, tileSize, 3, VIPS_FORMAT_INT);
-//        combined = combined.insert(in, offsetX, offsetY);
-//
-//        if ((i + 1) % columns == 0) {
-//            offsetY += tileSize;
-//            offsetX = 0;
-//        }
-//        else {
-//            offsetX += tileSize;
-//        }
+        else {
+            offsetX += tileSize;
+        }
     }
 
     return combined;
@@ -297,31 +284,19 @@ int exportThumbnail(string inputFilename, string outputFilename) {
     easyexif::EXIFInfo exifInfo = extractExifData(&reader, contextId, gridItemId);
 
     // Configure decoder
-    const auto& decoderParams = getDecoderParams(&reader, contextId, thmbId);
+    auto decoderParams = getDecoderParams(&reader, contextId, thmbId);
 
     // Extract & decode thumbnail
-    ImageFileReaderInterface::DataVector hevcData = extractHEVCData(&reader, &decoderParams, contextId, thmbId);
+    auto hevcData = extractHEVCData(&reader, &decoderParams, contextId, thmbId);
 
     // Decode HEVC Frame
-    AVFrame* frame = decodeHEVCFrame(hevcData);
+    VImage thumbImg = decodeHEVCFrame(hevcData);
 
-    // Encode frame to jpeg
-    AVPacket *jpegData = encodeAVFrameToPPM(frame);
-
-    // Read data with vips
-    VImage thumbJpg = VImage::new_from_buffer(jpegData->data, jpegData->size, NULL);
-
-    cout << thumbJpg.width() << "x" << thumbJpg.height() << " pixels" << endl;
-
-    thumbJpg.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
-    thumbJpg.jpegsave(const_cast<char *>(outputFilename.c_str()), VImage::option()->set("Q", QUALITY));
-
-    // cleanup
-    av_free(frame);
+    thumbImg.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
+    thumbImg.jpegsave(const_cast<char *>(outputFilename.c_str()), VImage::option()->set("Q", QUALITY));
 
     return 0;
 }
-
 
 
 /**
@@ -364,22 +339,19 @@ int convertToJpeg(string inputFilename, string outputFilename) {
     const ImageFileReaderInterface::DataVector decoderParams = getDecoderParams(&reader, contextId, tileItemIds.at(0));
 
     // Extract and decode all tiles
+
     chrono::steady_clock::time_point begin_encode = chrono::steady_clock::now();
 
-    vector<AVPacket*> tilePPM;
+    vector<VImage> tiles;
 
     for (auto &tileItemId : tileItemIds) {
 
-        // ToDo: Parallelize
         ImageFileReaderInterface::DataVector hevcData = extractHEVCData(&reader, &decoderParams, contextId, tileItemId);
 
-        AVFrame* frame = decodeHEVCFrame(hevcData);
+        VImage img = decodeHEVCFrame(hevcData);
 
-        AVPacket *ppmData = encodeAVFrameToPPM(frame);
-
-        tilePPM.push_back(ppmData);
+        tiles.push_back(img);
     }
-
 
     chrono::steady_clock::time_point end_encode = chrono::steady_clock::now();
     long tileEncodeTime = chrono::duration_cast<chrono::milliseconds>(end_encode - begin_encode).count();
@@ -388,12 +360,11 @@ int convertToJpeg(string inputFilename, string outputFilename) {
         cout << "Export & encode tiles " << tileEncodeTime << "ms" << endl;
     }
 
-
     // Stitch tiles together
 
     chrono::steady_clock::time_point begin_buildImage = chrono::steady_clock::now();
 
-    VImage result = buildFullImage(width, height, columns, tilePPM);
+    VImage result = buildFullImage(width, height, columns, tiles);
 
     result.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
 
@@ -409,23 +380,9 @@ int convertToJpeg(string inputFilename, string outputFilename) {
     return 0;
 }
 
-int checkDependencies() {
-
-    // TODO: get rid of all binary depenecies :)
-    if (system("which ffmpeg > /dev/null 2>&1")) {
-        cerr << "Requirement not found: missing ffmpeg" << endl;
-        return -1;
-    }
-
-    return 0;
-}
-
 int main(int argc, char* argv[])
 {
     Log::getWarningInstance().setLevel(Log::LogLevel::ERROR);
-
-    int dependencies = checkDependencies();
-    if (dependencies != 0) return dependencies;
 
     bool thumb = false;
     int retval = -1;
@@ -433,10 +390,6 @@ int main(int argc, char* argv[])
     VIPS_INIT(argv[0]);
 
     avcodec_register_all();
-    av_log_set_level(AV_LOG_TRACE);
-
-    string tempTemplate = "/tmp/heif.XXXXXX";
-    TEMP_DIR = mkdtemp(const_cast<char *>(tempTemplate.c_str()));
 
     try {
 
@@ -494,10 +447,8 @@ int main(int argc, char* argv[])
         cerr << le.what() << endl;
     }
 
-    int rm = system(("rm -r " + TEMP_DIR).c_str());
-
     vips_shutdown();
 
-    return rm != 0 ? rm : retval;
+    return retval;
 }
 
