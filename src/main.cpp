@@ -200,11 +200,13 @@ AVPacket* encodeAVFrameToJPEG(AVFrame * frame) {
         throw logic_error("Could not open JPEG codec");
     }
 
-    AVPacket jpegPacket = { .data = NULL, .size = 0};
-    av_init_packet(&jpegPacket);
+    AVPacket* jpegPacket = new AVPacket();
+    av_init_packet(jpegPacket);
+    jpegPacket->data = NULL;
+    jpegPacket->size = 0;
 
     int success;
-    int length = avcodec_encode_video2(jpegContext, &jpegPacket, frame, &success);
+    int length = avcodec_encode_video2(jpegContext, jpegPacket, frame, &success);
 
     if (length < 0 || !success) {
         throw logic_error("Failed to encode frame to JPEG");
@@ -213,7 +215,7 @@ AVPacket* encodeAVFrameToJPEG(AVFrame * frame) {
     avcodec_close(jpegContext);
     av_free(jpegContext);
 
-    return &jpegPacket;
+    return jpegPacket;
 }
 
 
@@ -313,6 +315,9 @@ int exportThumbnail(string inputFilename, string outputFilename) {
     // Decode HEVC Frame
     AVFrame* frame = decodeHEVCFrame(hevcData);
 
+    // Decode HEVC Frame
+    AVFrame* frame = decodeHEVCFrame(hevcData);
+
     // Encode frame to jpeg
     AVPacket *jpegData = encodeAVFrameToJPEG(frame);
 
@@ -322,7 +327,6 @@ int exportThumbnail(string inputFilename, string outputFilename) {
     cout << thumbJpg.width() << "x" << thumbJpg.height();
 
     thumbJpg.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
-
     thumbJpg.jpegsave(const_cast<char *>(outputFilename.c_str()), VImage::option()->set("Q", QUALITY));
 
     // cleanup
@@ -330,7 +334,6 @@ int exportThumbnail(string inputFilename, string outputFilename) {
 
     return 0;
 }
-
 
 
 
