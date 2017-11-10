@@ -315,9 +315,6 @@ int exportThumbnail(string inputFilename, string outputFilename) {
     // Decode HEVC Frame
     AVFrame* frame = decodeHEVCFrame(hevcData);
 
-    // Decode HEVC Frame
-    AVFrame* frame = decodeHEVCFrame(hevcData);
-
     // Encode frame to jpeg
     AVPacket *jpegData = encodeAVFrameToJPEG(frame);
 
@@ -383,6 +380,7 @@ int convertToJpeg(string inputFilename, string outputFilename) {
 
     for (auto &tileItemId : tileItemIds) {
 
+        // ToDo: Parallelize
         ImageFileReaderInterface::DataVector hevcData = extractHEVCData(&reader, &decoderParams, contextId, tileItemId);
 
         AVFrame* frame = decodeHEVCFrame(hevcData);
