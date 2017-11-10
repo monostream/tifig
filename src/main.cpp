@@ -321,7 +321,7 @@ int exportThumbnail(string inputFilename, string outputFilename) {
     // Read data with vips
     VImage thumbJpg = VImage::new_from_buffer(jpegData->data, jpegData->size, NULL);
 
-    cout << thumbJpg.width() << "x" << thumbJpg.height();
+    cout << thumbJpg.width() << "x" << thumbJpg.height() << " pixels" << endl;
 
     thumbJpg.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
     thumbJpg.jpegsave(const_cast<char *>(outputFilename.c_str()), VImage::option()->set("Q", QUALITY));
