@@ -6,7 +6,6 @@
 #include <vips/vips8>
 #include <unistd.h>
 
-
 extern "C" {
     #include <libavutil/opt.h>
     #include <libavutil/imgutils.h>
@@ -22,6 +21,7 @@ typedef ImageFileReaderInterface::IdVector IdVector;
 typedef ImageFileReaderInterface::GridItem GridItem;
 typedef ImageFileReaderInterface::FileReaderException FileReaderException;
 
+
 // Global vars
 static bool VERBOSE = false;
 static int QUALITY = 90;
@@ -34,7 +34,8 @@ static struct SwsContext* swsContext; // nice api libav! :(
  * @param contextId
  * @return
  */
-IdVector findGridItems(const HevcImageFileReader *reader, uint32_t contextId) {
+IdVector findGridItems(const HevcImageFileReader *reader, uint32_t contextId)
+{
     IdVector gridItemIds;
     reader->getItemListByType(contextId, "grid", gridItemIds);
 
@@ -52,7 +53,8 @@ IdVector findGridItems(const HevcImageFileReader *reader, uint32_t contextId) {
  * @param itemId
  * @return
  */
-uint32_t findThumbnailId(const HevcImageFileReader *reader, uint32_t contextId, uint32_t itemId) {
+uint32_t findThumbnailId(const HevcImageFileReader *reader, uint32_t contextId, uint32_t itemId)
+{
     IdVector thmbIds;
     reader->getReferencedToItemListByType(contextId, itemId, "thmb", thmbIds);
 
@@ -68,8 +70,8 @@ uint32_t findThumbnailId(const HevcImageFileReader *reader, uint32_t contextId, 
  * @param frame
  * @return
  */
-VImage loadImageFromDecodedFrame(AVFrame *frame) {
-
+VImage loadImageFromDecodedFrame(AVFrame *frame)
+{
     AVFrame* imgFrame = av_frame_alloc();
     int width = frame->width;
     int height = frame->height;
@@ -105,7 +107,8 @@ VImage loadImageFromDecodedFrame(AVFrame *frame) {
  * @param hevcData
  * @return
  */
-VImage decodeHEVCFrame(DataVector& hevcData) {
+VImage decodeHEVCFrame(DataVector& hevcData)
+{
     AVCodec *codec = avcodec_find_decoder(AV_CODEC_ID_HEVC);
     AVCodecContext *c;
 
@@ -216,8 +219,8 @@ VImage buildFullImage(int width, int height, int columns, vector<VImage> tiles)
  * @param outputFilename
  * @return
  */
-int exportThumbnail(string inputFilename, string outputFilename) {
-
+int exportThumbnail(string inputFilename, string outputFilename)
+{
     HevcImageFileReader reader;
     reader.initialize(inputFilename);
     const uint32_t contextId = reader.getFileProperties().rootLevelMetaBoxProperties.contextId;
@@ -253,8 +256,8 @@ int exportThumbnail(string inputFilename, string outputFilename) {
  * @param outputFilename
  * @return
  */
-int convertToJpeg(string inputFilename, string outputFilename) {
-
+int convertToJpeg(string inputFilename, string outputFilename)
+{
     HevcImageFileReader reader;
     reader.initialize(inputFilename);
     const uint32_t contextId = reader.getFileProperties().rootLevelMetaBoxProperties.contextId;
