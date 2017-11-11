@@ -85,14 +85,14 @@ VImage loadImageFromDecodedFrame(AVFrame *frame)
                                                       0, nullptr, nullptr, nullptr);
 
     av_image_fill_arrays(imgFrame->data, imgFrame->linesize, tempBuffer, PIX_FMT_RGB24, width, height, 1);
-    auto const* const* frameDataPtr = (uint8_t const* const*)frame->data;
+    uint8_t const* const* frameDataPtr = (uint8_t const* const*)frame->data;
 
     // Convert YUV to RGB
     sws_scale(sws_ctx, frameDataPtr, frame->linesize, 0, height, imgFrame->data, imgFrame->linesize);
 
     // Move RGB data in pixel order into memory
     uint8_t* buff = (uint8_t*) malloc(imgRGB24size);
-    const auto* const* dataPtr = (const uint8_t* const*)imgFrame->data;
+    const uint8_t* const* dataPtr = (const uint8_t* const*)imgFrame->data;
     av_image_copy_to_buffer(buff, imgRGB24size, dataPtr, imgFrame->linesize, AV_PIX_FMT_RGB24, width, height, 1);
 
     av_free(tempBuffer);
@@ -224,7 +224,7 @@ int exportThumbnail(string inputFilename, string outputFilename)
     const uint32_t contextId = reader.getFileProperties().rootLevelMetaBoxProperties.contextId;
 
     // Detect grid
-    const auto &gridItems = findGridItems(&reader, contextId);
+    const IdVector& gridItems = findGridItems(&reader, contextId);
 
     uint32_t gridItemId = gridItems.at(0);
 
@@ -263,7 +263,7 @@ int convertToJpeg(string inputFilename, string outputFilename)
     const uint32_t contextId = reader.getFileProperties().rootLevelMetaBoxProperties.contextId;
 
     // Detect grid
-    const auto &gridItems = findGridItems(&reader, contextId);
+    const IdVector& gridItems = findGridItems(&reader, contextId);
 
     uint32_t gridItemId = gridItems.at(0);
     GridItem gridItem;
@@ -294,7 +294,7 @@ int convertToJpeg(string inputFilename, string outputFilename)
 
     vector<VImage> tiles;
 
-    for (auto &tileItemId : tileItemIds) {
+    for (uint32_t tileItemId : tileItemIds) {
 
         DataVector hevcData;
         reader.getItemDataWithDecoderParameters(contextId, tileItemId, firstTileId, hevcData);
