@@ -4,7 +4,6 @@
 #include <hevcimagefilereader.hpp>
 #include <log.hpp>
 #include <vips/vips8>
-#include <unistd.h>
 
 extern "C" {
     #include <libavutil/opt.h>
@@ -25,7 +24,8 @@ typedef ImageFileReaderInterface::FileReaderException FileReaderException;
 // Global vars
 static bool VERBOSE = false;
 static int QUALITY = 90;
-static struct SwsContext* swsContext; // nice api libav! :(
+
+static struct SwsContext* swsContext;
 
 
 /**
@@ -76,25 +76,23 @@ VImage loadImageFromDecodedFrame(AVFrame *frame)
     int width = frame->width;
     int height = frame->height;
 
-    // Initialize buffer for RGB conversion
     int imgRGB24size = avpicture_get_size(PIX_FMT_RGB24, width, height);;
-    uint8_t *tempBuffer = (uint8_t *)av_malloc(imgRGB24size);
+    uint8_t *tempBuffer = (uint8_t*) av_malloc(imgRGB24size);
 
-    // Prepare color space conversion
     struct SwsContext *sws_ctx = sws_getCachedContext(swsContext,
                                                       width, height, AV_PIX_FMT_YUV420P,
                                                       width, height, AV_PIX_FMT_RGB24,
                                                       0, nullptr, nullptr, nullptr);
 
     av_image_fill_arrays(imgFrame->data, imgFrame->linesize, tempBuffer, PIX_FMT_RGB24, width, height, 1);
-    auto const * const * frameDataPtr = (uint8_t const * const *)frame->data;
+    auto const* const* frameDataPtr = (uint8_t const* const*)frame->data;
 
     // Convert YUV to RGB
     sws_scale(sws_ctx, frameDataPtr, frame->linesize, 0, height, imgFrame->data, imgFrame->linesize);
 
     // Move RGB data in pixel order into memory
-    uint8_t* buff = (uint8_t*) malloc(imgRGB24size); // TODO: when should we free this?
-    const auto * const* dataPtr = (const uint8_t* const*)imgFrame->data;
+    uint8_t* buff = (uint8_t*) malloc(imgRGB24size);
+    const auto* const* dataPtr = (const uint8_t* const*)imgFrame->data;
     av_image_copy_to_buffer(buff, imgRGB24size, dataPtr, imgFrame->linesize, AV_PIX_FMT_RGB24, width, height, 1);
 
     av_free(tempBuffer);
@@ -244,7 +242,9 @@ int exportThumbnail(string inputFilename, string outputFilename)
     VImage thumbImg = decodeHEVCFrame(hevcData);
 
     thumbImg.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
-    thumbImg.jpegsave(const_cast<char *>(outputFilename.c_str()), VImage::option()->set("Q", QUALITY));
+
+    char * jpegName = const_cast<char *>(outputFilename.c_str());
+    thumbImg.jpegsave(jpegName, VImage::option()->set("Q", QUALITY));
 
     return 0;
 }
@@ -319,7 +319,8 @@ int convertToJpeg(string inputFilename, string outputFilename)
 
     result.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
 
-    result.jpegsave(const_cast<char *>(outputFilename.c_str()), VImage::option()->set("Q", QUALITY));
+    char * jpegName = const_cast<char *>(outputFilename.c_str());
+    result.jpegsave(jpegName, VImage::option()->set("Q", QUALITY));
 
     chrono::steady_clock::time_point end_buildImage = chrono::steady_clock::now();
     long buildImageTime = chrono::duration_cast<chrono::milliseconds>(end_buildImage - begin_buildImage).count();
@@ -333,9 +334,9 @@ int convertToJpeg(string inputFilename, string outputFilename)
 
 int main(int argc, char* argv[])
 {
+    // Disable colr and pixi boxes unknown warnings from libheif
     Log::getWarningInstance().setLevel(Log::LogLevel::ERROR);
 
-    bool thumb = false;
     int retval = -1;
 
     VIPS_INIT(argv[0]);
@@ -355,16 +356,15 @@ int main(int argc, char* argv[])
                 ("o,output", "Output JPEG image", cxxopts::value<string>())
                 ("q,quality", "Output JPEG quality (1-100) default 90", cxxopts::value<int>(QUALITY))
                 ("v,verbose", "Verbose output", cxxopts::value<bool>(VERBOSE))
-                ("t,thumbnail", "Export thumbnail", cxxopts::value<bool>(thumb))
+                ("t,thumbnail", "Export thumbnail", cxxopts::value<bool>())
                 ;
 
         options.parse(argc, argv);
 
         if (options.count("input") && options.count("output")) {
-
             string inputFileName = options["input"].as<string>();
             string outputFileName = options["output"].as<string>();
-
+            bool thumb = options["thumbnail"].as<bool>();
 
             chrono::steady_clock::time_point begin = chrono::steady_clock::now();
 
@@ -375,14 +375,12 @@ int main(int argc, char* argv[])
             }
 
             chrono::steady_clock::time_point end = chrono::steady_clock::now();
-            int  duration = chrono::duration_cast<chrono::milliseconds>(end - begin).count();
+            int duration = chrono::duration_cast<chrono::milliseconds>(end - begin).count();
 
             if (VERBOSE) {
                 cout << "Total Time " << duration << "ms" << endl;
             }
-
-        }
-        else {
+        } else {
             cout << options.help() << endl;
         }
 
