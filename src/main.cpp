@@ -17,11 +17,16 @@ extern "C" {
 using namespace std;
 using namespace vips;
 
+typedef ImageFileReaderInterface::DataVector DataVector;
+typedef ImageFileReaderInterface::IdVector IdVector;
+typedef ImageFileReaderInterface::GridItem GridItem;
+typedef ImageFileReaderInterface::FileReaderException FileReaderException;
 
+// Global vars
 static bool VERBOSE = false;
 static int QUALITY = 90;
-
 static struct SwsContext* swsContext; // nice api libav! :(
+
 
 /**
  * Check if image has a grid configuration and return the grid id
@@ -29,8 +34,8 @@ static struct SwsContext* swsContext; // nice api libav! :(
  * @param contextId
  * @return
  */
-ImageFileReaderInterface::IdVector findGridItems(const HevcImageFileReader *reader, uint32_t contextId) {
-    ImageFileReaderInterface::IdVector gridItemIds;
+IdVector findGridItems(const HevcImageFileReader *reader, uint32_t contextId) {
+    IdVector gridItemIds;
     reader->getItemListByType(contextId, "grid", gridItemIds);
 
     if (gridItemIds.size() == 0) {
@@ -48,7 +53,7 @@ ImageFileReaderInterface::IdVector findGridItems(const HevcImageFileReader *read
  * @return
  */
 uint32_t findThumbnailId(const HevcImageFileReader *reader, uint32_t contextId, uint32_t itemId) {
-    ImageFileReaderInterface::IdVector thmbIds;
+    IdVector thmbIds;
     reader->getReferencedToItemListByType(contextId, itemId, "thmb", thmbIds);
 
     if (thmbIds.size() == 0) {
@@ -100,7 +105,7 @@ VImage loadImageFromDecodedFrame(AVFrame *frame) {
  * @param hevcData
  * @return
  */
-VImage decodeHEVCFrame(ImageFileReaderInterface::DataVector& hevcData) {
+VImage decodeHEVCFrame(DataVector& hevcData) {
     AVCodec *codec = avcodec_find_decoder(AV_CODEC_ID_HEVC);
     AVCodecContext *c;
 
@@ -145,8 +150,8 @@ VImage decodeHEVCFrame(ImageFileReaderInterface::DataVector& hevcData) {
  */
 easyexif::EXIFInfo extractExifData(HevcImageFileReader *reader, uint32_t contextId, uint32_t itemId)
 {
-    ImageFileReaderInterface::IdVector exifItemIds;
-    ImageFileReaderInterface::DataVector exifData;
+    IdVector exifItemIds;
+    DataVector exifData;
 
     reader->getReferencedToItemListByType(contextId, itemId, "cdsc", exifItemIds);
 
@@ -229,8 +234,8 @@ int exportThumbnail(string inputFilename, string outputFilename) {
     easyexif::EXIFInfo exifInfo = extractExifData(&reader, contextId, gridItemId);
 
     // Get thumbnail HEVC data
-    ImageFileReaderInterface::DataVector hevcData;
-    reader.getItemDataWithDecoderParameters(contextId, thmbId, thmbId, hevcData);
+    DataVector hevcData;
+    reader.getItemDataWithDecoderParameters(contextId, thmbId, hevcData);
 
     // Decode HEVC Frame
     VImage thumbImg = decodeHEVCFrame(hevcData);
@@ -258,7 +263,7 @@ int convertToJpeg(string inputFilename, string outputFilename) {
     const auto &gridItems = findGridItems(&reader, contextId);
 
     uint32_t gridItemId = gridItems.at(0);
-    ImageFileReaderInterface::GridItem gridItem;
+    GridItem gridItem;
     gridItem = reader.getItemGrid(contextId, gridItemId);
 
     // Convenience vars
@@ -275,7 +280,7 @@ int convertToJpeg(string inputFilename, string outputFilename) {
     easyexif::EXIFInfo exifInfo = extractExifData(&reader, contextId, gridItemId);
 
     // Find master tiles to extract
-    ImageFileReaderInterface::IdVector tileItemIds;
+    IdVector tileItemIds;
     reader.getItemListByType(contextId, "master", tileItemIds);
 
     uint32_t firstTileId = tileItemIds.at(0);
@@ -288,7 +293,7 @@ int convertToJpeg(string inputFilename, string outputFilename) {
 
     for (auto &tileItemId : tileItemIds) {
 
-        ImageFileReaderInterface::DataVector hevcData;
+        DataVector hevcData;
         reader.getItemDataWithDecoderParameters(contextId, tileItemId, firstTileId, hevcData);
 
         VImage img = decodeHEVCFrame(hevcData);
@@ -383,7 +388,7 @@ int main(int argc, char* argv[])
     catch (const cxxopts::OptionException& oe) {
         cout << "error parsing options: " << oe.what() << endl;
     }
-    catch (const ImageFileReaderInterface::FileReaderException& fre) {
+    catch (const FileReaderException& fre) {
         cerr << "Could not read HEIF image: " << fre.what() << endl;
     }
     catch (const logic_error& le) {
