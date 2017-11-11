@@ -59,62 +59,7 @@ uint32_t findThumbnailId(const HevcImageFileReader *reader, uint32_t contextId, 
 }
 
 /**
- * Configure decoder to extract HEVC stream
- * @param reader
- * @param contextId
- * @param itemId
- * @return
- */
-ImageFileReaderInterface::DataVector getDecoderParams(const HevcImageFileReader *reader,
-                                                      uint32_t contextId,
-                                                      uint32_t itemId) {
-    HevcImageFileReader::ParameterSetMap parameterSet;
-    reader->getDecoderParameterSets(contextId, itemId, parameterSet);
-    string codeType = reader->getDecoderCodeType(contextId, itemId);
-    ImageFileReaderInterface::DataVector parametersData;
-    if ((codeType == "hvc1") || (codeType == "lhv1")) {
-        // VPS (HEVC specific)
-        parametersData.insert(parametersData.end(), parameterSet.at("VPS").begin(), parameterSet.at("VPS").end());
-    }
-
-    if ((codeType == "avc1") || (codeType == "hvc1") || (codeType == "lhv1")) {
-        // SPS and PPS
-        parametersData.insert(parametersData.end(), parameterSet.at("SPS").begin(), parameterSet.at("SPS").end());
-        parametersData.insert(parametersData.end(), parameterSet.at("PPS").begin(), parameterSet.at("PPS").end());
-    } else {
-        // No other code types supported
-        throw logic_error("Image encoded wit" + codeType + " is not supported");
-    }
-
-    return parametersData;
-}
-
-/**
- * Extract HEVC data stream with decoder options
- * @param reader
- * @param decoderParams
- * @param contextId
- * @param itemId
- * @return
- */
-ImageFileReaderInterface::DataVector extractHEVCData(HevcImageFileReader *reader,
-                                                     const ImageFileReaderInterface::DataVector *decoderParams,
-                                                     uint32_t contextId,
-                                                     uint32_t itemId) {
-    ImageFileReaderInterface::DataVector dataWithDecoderParams;
-    ImageFileReaderInterface::DataVector itemData;
-
-    dataWithDecoderParams.insert(dataWithDecoderParams.end(), decoderParams->begin(), decoderParams->end());
-
-    reader->getItemData(contextId, itemId, itemData);
-
-    dataWithDecoderParams.insert(dataWithDecoderParams.end(), itemData.begin(), itemData.end());
-
-    return dataWithDecoderParams;
-}
-
-/**
- * Conver colorspace of decoded frame to RGB and load vips imageS
+ * Convert colorspace of decoded frame to RGB and load vips image
  * @param frame
  * @return
  */
@@ -141,7 +86,7 @@ VImage loadImageFromDecodedFrame(AVFrame *frame) {
     sws_scale(sws_ctx, frameDataPtr, frame->linesize, 0, height, imgFrame->data, imgFrame->linesize);
 
     // Move RGB data in pixel order into memory
-    uint8_t* buff = (uint8_t*) malloc(imgRGB24size);
+    uint8_t* buff = (uint8_t*) malloc(imgRGB24size); // TODO: when should we free this?
     const auto * const* dataPtr = (const uint8_t* const*)imgFrame->data;
     av_image_copy_to_buffer(buff, imgRGB24size, dataPtr, imgFrame->linesize, AV_PIX_FMT_RGB24, width, height, 1);
 
@@ -283,11 +228,9 @@ int exportThumbnail(string inputFilename, string outputFilename) {
     // Extract EXIF data;
     easyexif::EXIFInfo exifInfo = extractExifData(&reader, contextId, gridItemId);
 
-    // Configure decoder
-    auto decoderParams = getDecoderParams(&reader, contextId, thmbId);
-
-    // Extract & decode thumbnail
-    auto hevcData = extractHEVCData(&reader, &decoderParams, contextId, thmbId);
+    // Get thumbnail HEVC data
+    ImageFileReaderInterface::DataVector hevcData;
+    reader.getItemDataWithDecoderParameters(contextId, thmbId, thmbId, hevcData);
 
     // Decode HEVC Frame
     VImage thumbImg = decodeHEVCFrame(hevcData);
@@ -335,8 +278,7 @@ int convertToJpeg(string inputFilename, string outputFilename) {
     ImageFileReaderInterface::IdVector tileItemIds;
     reader.getItemListByType(contextId, "master", tileItemIds);
 
-    // Configure decoder
-    const ImageFileReaderInterface::DataVector decoderParams = getDecoderParams(&reader, contextId, tileItemIds.at(0));
+    uint32_t firstTileId = tileItemIds.at(0);
 
     // Extract and decode all tiles
 
@@ -346,7 +288,8 @@ int convertToJpeg(string inputFilename, string outputFilename) {
 
     for (auto &tileItemId : tileItemIds) {
 
-        ImageFileReaderInterface::DataVector hevcData = extractHEVCData(&reader, &decoderParams, contextId, tileItemId);
+        ImageFileReaderInterface::DataVector hevcData;
+        reader.getItemDataWithDecoderParameters(contextId, tileItemId, firstTileId, hevcData);
 
         VImage img = decodeHEVCFrame(hevcData);
 
