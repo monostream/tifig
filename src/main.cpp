@@ -172,44 +172,6 @@ easyexif::EXIFInfo extractExifData(HevcImageFileReader *reader, uint32_t context
     return exifInfo;
 }
 
-/**
- * Build full image from tiles
- * @param width
- * @param height
- * @param columns
- * @param tiles
- */
-VImage buildFullImage(int width, int height, int columns, vector<VImage> tiles)
-{
-    if (tiles.size() == 0) {
-        throw logic_error("No tiles given to build image");
-    }
-
-    const int tileSize = tiles.at(0).width();
-
-    VImage combined = VImage::new_matrix(width, height);
-
-    int offsetX = 0;
-    int offsetY = 0;
-
-    for (int i = 0; i < tiles.size(); i++) {
-
-        VImage in = tiles.at(i);
-
-        combined = combined.insert(in, offsetX, offsetY);
-
-        if ((i + 1) % columns == 0) {
-            offsetY += tileSize;
-            offsetX = 0;
-        }
-        else {
-            offsetX += tileSize;
-        }
-    }
-
-    return combined;
-}
-
 
 /**
  *
@@ -315,7 +277,11 @@ int convertToJpeg(string inputFilename, string outputFilename)
 
     chrono::steady_clock::time_point begin_buildImage = chrono::steady_clock::now();
 
-    VImage result = buildFullImage(width, height, columns, tiles);
+    VImage result = VImage::new_memory();
+
+    result = result.arrayjoin(tiles, VImage::option()->set("across", (int)columns));
+
+    result = result.extract_area(0, 0, width, height);
 
     result.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
 
