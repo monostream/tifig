@@ -39,7 +39,7 @@ IdVector findGridItems(const HevcImageFileReader *reader, uint32_t contextId)
     IdVector gridItemIds;
     reader->getItemListByType(contextId, "grid", gridItemIds);
 
-    if (gridItemIds.size() == 0) {
+    if (gridItemIds.empty()) {
         throw logic_error("No grid items founds!");
     }
 
@@ -58,7 +58,7 @@ uint32_t findThumbnailId(const HevcImageFileReader *reader, uint32_t contextId, 
     IdVector thmbIds;
     reader->getReferencedToItemListByType(contextId, itemId, "thmb", thmbIds);
 
-    if (thmbIds.size() == 0) {
+    if (thmbIds.empty()) {
         throw logic_error("Thumbnail ID not found!");
     }
 
@@ -66,18 +66,19 @@ uint32_t findThumbnailId(const HevcImageFileReader *reader, uint32_t contextId, 
 }
 
 /**
- * Convert colorspace of decoded frame to RGB and load vips image
+ * Convert colorspace of decoded frame load into buffer
  * @param frame
- * @return
+ * @param dst
+ * @param dst_size
+ * @return the number of bytes written to dst, or a negative value on error
  */
-VImage loadImageFromDecodedFrame(AVFrame *frame)
+int copyFrameInto(AVFrame *frame, uint8_t *dst, size_t dst_size)
 {
     AVFrame* imgFrame = av_frame_alloc();
     int width = frame->width;
     int height = frame->height;
 
-    int imgRGB24size = avpicture_get_size(AV_PIX_FMT_RGB24, width, height);
-    uint8_t *tempBuffer = (uint8_t*) av_malloc(imgRGB24size);
+    uint8_t *tempBuffer = (uint8_t*) av_malloc(dst_size);
 
     struct SwsContext *sws_ctx = sws_getCachedContext(swsContext,
                                                       width, height, AV_PIX_FMT_YUV420P,
@@ -91,54 +92,56 @@ VImage loadImageFromDecodedFrame(AVFrame *frame)
     sws_scale(sws_ctx, frameDataPtr, frame->linesize, 0, height, imgFrame->data, imgFrame->linesize);
 
     // Move RGB data in pixel order into memory
-    uint8_t* buff = (uint8_t*) malloc(imgRGB24size);
-    const uint8_t* const* dataPtr = (const uint8_t* const*)imgFrame->data;
-    av_image_copy_to_buffer(buff, imgRGB24size, dataPtr, imgFrame->linesize, AV_PIX_FMT_RGB24, width, height, 1);
+    const uint8_t* const* dataPtr = static_cast<const uint8_t* const*>(imgFrame->data);
+    int size = static_cast<int>(dst_size);
+    int ret = av_image_copy_to_buffer(dst, size, dataPtr, imgFrame->linesize, AV_PIX_FMT_RGB24, width, height, 1);
 
+    av_free(imgFrame);
     av_free(tempBuffer);
 
-    return VImage::new_from_memory(buff, imgRGB24size, width, height, 3, VIPS_FORMAT_UCHAR);
+    return ret;
+}
+
+/**
+ * Get libav HEVC decoder
+ * @return
+ */
+AVCodecContext* getHEVCDecoderContext()
+{
+    AVCodec *codec = avcodec_find_decoder(AV_CODEC_ID_HEVC);
+    AVCodecContext *c = avcodec_alloc_context3(codec);
+
+    if (!c) {
+        throw logic_error("Could not allocate video codec context");
+    }
+
+    if (avcodec_open2(c, c->codec, NULL) < 0) {
+        throw logic_error("Could not open codec");
+    }
+
+    return c;
 }
 
 /**
  * Decode HEVC Frame using libav
  * @param hevcData
- * @return
+ * @param frame
+ * @return negative value on error, otherwise the bytes used
  */
-VImage decodeHEVCFrame(DataVector& hevcData)
+int decodeHEVCFrame(AVCodecContext* c, DataVector& hevcData, AVFrame* frame)
 {
-    AVCodec *codec = avcodec_find_decoder(AV_CODEC_ID_HEVC);
-    AVCodecContext *c;
-
-    c = avcodec_alloc_context3(codec);
-    if (!c) {
-        throw logic_error("Could not allocate video codec context");
-    }
-
-    if (avcodec_open2(c, codec, NULL) < 0) {
-        throw logic_error("Could not open codec");
-    }
-
-    AVFrame *frame = av_frame_alloc();
-
     AVPacket avpkt;
     av_init_packet(&avpkt);
     avpkt.size = hevcData.size();
     avpkt.data = &hevcData[0];
 
     int success;
-    int len = avcodec_decode_video2(c, frame, &success, &avpkt);
-    if (len < 0 || !success) {
-        throw logic_error("Failed to decode frame");
+    int ret = avcodec_decode_video2(c, frame, &success, &avpkt);
+    if (ret < 0) {
+        throw logic_error("Failed to decode frame, return value: " + to_string(ret));
     }
 
-    VImage image = loadImageFromDecodedFrame(frame);
-
-    avcodec_close(c);
-    av_free(c);
-    av_free(frame);
-
-    return image;
+    return success;
 }
 
 
@@ -156,13 +159,14 @@ easyexif::EXIFInfo extractExifData(HevcImageFileReader *reader, uint32_t context
 
     reader->getReferencedToItemListByType(contextId, itemId, "cdsc", exifItemIds);
 
-    if (exifItemIds.size() == 0) {
+    if (exifItemIds.empty()) {
         throw logic_error("Exif Data ID (cdsc) not found!");
     }
 
     reader->getItemData(contextId, exifItemIds.at(0), exifData);
 
     easyexif::EXIFInfo exifInfo;
+
     int parseRet = exifInfo.parseFromEXIFSegment(&exifData[4], exifData.size() - 4);
 
     if (parseRet != 0) {
@@ -179,7 +183,7 @@ easyexif::EXIFInfo extractExifData(HevcImageFileReader *reader, uint32_t context
  * @param outputFilename
  * @return
  */
-int exportThumbnail(string inputFilename, string outputFilename)
+int exportThumbnail(const string& inputFilename, const string& outputFilename)
 {
     HevcImageFileReader reader;
     reader.initialize(inputFilename);
@@ -201,12 +205,29 @@ int exportThumbnail(string inputFilename, string outputFilename)
     reader.getItemDataWithDecoderParameters(contextId, thmbId, hevcData);
 
     // Decode HEVC Frame
-    VImage thumbImg = decodeHEVCFrame(hevcData);
+    AVCodecContext* decoder = getHEVCDecoderContext();
+    AVFrame* frame = av_frame_alloc();
+
+    if (!decodeHEVCFrame(decoder, hevcData, frame)) {
+        throw logic_error("Failed to decode HEVC thumbnail");
+    }
+
+    size_t bufferSize = static_cast<size_t>(avpicture_get_size(AV_PIX_FMT_RGB24, frame->width, frame->height));
+    uint8_t* rgbBuffer = (uint8_t*)malloc(bufferSize);
+    copyFrameInto(frame, rgbBuffer, bufferSize);
+
+    // Load image into vips and save as JPEG
+    VImage thumbImg = VImage::new_from_memory(rgbBuffer, bufferSize, frame->width, frame->height, 3, VIPS_FORMAT_UCHAR);
 
     thumbImg.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
 
     char * jpegName = const_cast<char *>(outputFilename.c_str());
     thumbImg.jpegsave(jpegName, VImage::option()->set("Q", QUALITY));
+
+    free(rgbBuffer);
+    avcodec_close(decoder);
+    av_free(decoder);
+    av_free(frame);
 
     return 0;
 }
@@ -218,7 +239,7 @@ int exportThumbnail(string inputFilename, string outputFilename)
  * @param outputFilename
  * @return
  */
-int convertToJpeg(string inputFilename, string outputFilename)
+int convertToJpeg(const string& inputFilename, const string& outputFilename)
 {
     HevcImageFileReader reader;
     reader.initialize(inputFilename);
@@ -252,6 +273,9 @@ int convertToJpeg(string inputFilename, string outputFilename)
 
     // Extract and decode all tiles
 
+    AVCodecContext* decoder = getHEVCDecoderContext();
+    AVFrame* frame = av_frame_alloc();
+
     chrono::steady_clock::time_point begin_encode = chrono::steady_clock::now();
 
     vector<VImage> tiles;
@@ -261,10 +285,23 @@ int convertToJpeg(string inputFilename, string outputFilename)
         DataVector hevcData;
         reader.getItemDataWithDecoderParameters(contextId, tileItemId, firstTileId, hevcData);
 
-        VImage img = decodeHEVCFrame(hevcData);
+        if (!decodeHEVCFrame(decoder, hevcData, frame)) {
+            throw logic_error("Failed to decode HEVC tile #" + to_string(tileItemId));
+        }
+
+        size_t bufferSize = static_cast<size_t>(avpicture_get_size(AV_PIX_FMT_RGB24, frame->width, frame->height));
+        uint8_t* rgbBuffer = (uint8_t*)malloc(bufferSize);
+        copyFrameInto(frame, rgbBuffer, bufferSize);
+
+        // Load image into vips and save as JPEG
+        VImage img = VImage::new_from_memory(rgbBuffer, bufferSize, frame->width, frame->height, 3, VIPS_FORMAT_UCHAR);
 
         tiles.push_back(img);
     }
+
+    avcodec_close(decoder);
+    av_free(decoder);
+    av_free(frame);
 
     chrono::steady_clock::time_point end_encode = chrono::steady_clock::now();
     long tileEncodeTime = chrono::duration_cast<chrono::milliseconds>(end_encode - begin_encode).count();
@@ -341,7 +378,7 @@ int main(int argc, char* argv[])
             }
 
             chrono::steady_clock::time_point end = chrono::steady_clock::now();
-            int duration = chrono::duration_cast<chrono::milliseconds>(end - begin).count();
+            long duration = chrono::duration_cast<chrono::milliseconds>(end - begin).count();
 
             if (VERBOSE) {
                 cout << "Total Time " << duration << "ms" << endl;
