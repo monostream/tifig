@@ -76,7 +76,7 @@ VImage loadImageFromDecodedFrame(AVFrame *frame)
     int width = frame->width;
     int height = frame->height;
 
-    int imgRGB24size = avpicture_get_size(PIX_FMT_RGB24, width, height);;
+    int imgRGB24size = avpicture_get_size(AV_PIX_FMT_RGB24, width, height);
     uint8_t *tempBuffer = (uint8_t*) av_malloc(imgRGB24size);
 
     struct SwsContext *sws_ctx = sws_getCachedContext(swsContext,
@@ -84,7 +84,7 @@ VImage loadImageFromDecodedFrame(AVFrame *frame)
                                                       width, height, AV_PIX_FMT_RGB24,
                                                       0, nullptr, nullptr, nullptr);
 
-    av_image_fill_arrays(imgFrame->data, imgFrame->linesize, tempBuffer, PIX_FMT_RGB24, width, height, 1);
+    av_image_fill_arrays(imgFrame->data, imgFrame->linesize, tempBuffer, AV_PIX_FMT_RGB24, width, height, 1);
     uint8_t const* const* frameDataPtr = (uint8_t const* const*)frame->data;
 
     // Convert YUV to RGB
