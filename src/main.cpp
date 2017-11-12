@@ -115,7 +115,7 @@ AVCodecContext* getHEVCDecoderContext()
         throw logic_error("Could not allocate video codec context");
     }
 
-    if (avcodec_open2(c, c->codec, NULL) < 0) {
+    if (avcodec_open2(c, c->codec, nullptr) < 0) {
         throw logic_error("Could not open codec");
     }
 
@@ -130,9 +130,9 @@ AVCodecContext* getHEVCDecoderContext()
  */
 int decodeHEVCFrame(AVCodecContext* c, DataVector& hevcData, AVFrame* frame)
 {
-    AVPacket avpkt;
+    AVPacket avpkt = {};
     av_init_packet(&avpkt);
-    avpkt.size = hevcData.size();
+    avpkt.size = static_cast<int>(hevcData.size());
     avpkt.data = &hevcData[0];
 
     int success;
@@ -165,9 +165,17 @@ easyexif::EXIFInfo extractExifData(HevcImageFileReader *reader, uint32_t context
 
     reader->getItemData(contextId, exifItemIds.at(0), exifData);
 
+    if (exifData.empty()) {
+        throw logic_error("Exif data is empty");
+    }
+
     easyexif::EXIFInfo exifInfo;
 
-    int parseRet = exifInfo.parseFromEXIFSegment(&exifData[4], exifData.size() - 4);
+    const int exifOffset = 4; // TODO: Derive this from data!
+    uint8_t* exifDataPtr = &exifData[exifOffset];
+    uint32_t exifDataLength = static_cast<uint32_t>(exifData.size() - exifOffset);
+
+    int parseRet = exifInfo.parseFromEXIFSegment(exifDataPtr, exifDataLength);
 
     if (parseRet != 0) {
         throw logic_error("Failed to parse EXIF data!");
