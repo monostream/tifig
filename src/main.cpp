@@ -186,27 +186,16 @@ easyexif::EXIFInfo extractExifData(HevcImageFileReader *reader, uint32_t context
 
 
 /**
- *
- * @param inputFilename
- * @param outputFilename
+ * Get thumbnail from HEIC image
+ * @param reader
+ * @param contextId
+ * @param gridItemId
  * @return
  */
-int exportThumbnail(const string& inputFilename, const string& outputFilename)
+VImage getThumbnailImage(HevcImageFileReader& reader, uint32_t contextId, uint32_t gridItemId)
 {
-    HevcImageFileReader reader;
-    reader.initialize(inputFilename);
-    const uint32_t contextId = reader.getFileProperties().rootLevelMetaBoxProperties.contextId;
-
-    // Detect grid
-    const IdVector& gridItems = findGridItems(&reader, contextId);
-
-    uint32_t gridItemId = gridItems.at(0);
-
     // Find Thumbnail ID
     const uint32_t thmbId = findThumbnailId(&reader, contextId, gridItemId);
-
-    // Extract EXIF data;
-    easyexif::EXIFInfo exifInfo = extractExifData(&reader, contextId, gridItemId);
 
     // Get thumbnail HEVC data
     DataVector hevcData;
@@ -227,36 +216,23 @@ int exportThumbnail(const string& inputFilename, const string& outputFilename)
     // Load image into vips and save as JPEG
     VImage thumbImg = VImage::new_from_memory(rgbBuffer, bufferSize, frame->width, frame->height, 3, VIPS_FORMAT_UCHAR);
 
-    thumbImg.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
-
-    char * jpegName = const_cast<char *>(outputFilename.c_str());
-    thumbImg.jpegsave(jpegName, VImage::option()->set("Q", QUALITY));
-
-    free(rgbBuffer);
     avcodec_close(decoder);
     av_free(decoder);
     av_free(frame);
 
-    return 0;
+    return thumbImg;
 }
 
 
 /**
- *
- * @param inputFilename
- * @param outputFilename
+ * Build image from HEIC grid item
+ * @param reader
+ * @param contextId
+ * @param gridItemId
  * @return
  */
-int convertToJpeg(const string& inputFilename, const string& outputFilename)
+VImage getImage(HevcImageFileReader &reader, uint32_t contextId, uint32_t gridItemId)
 {
-    HevcImageFileReader reader;
-    reader.initialize(inputFilename);
-    const uint32_t contextId = reader.getFileProperties().rootLevelMetaBoxProperties.contextId;
-
-    // Detect grid
-    const IdVector& gridItems = findGridItems(&reader, contextId);
-
-    uint32_t gridItemId = gridItems.at(0);
     GridItem gridItem;
     gridItem = reader.getItemGrid(contextId, gridItemId);
 
@@ -270,9 +246,6 @@ int convertToJpeg(const string& inputFilename, const string& outputFilename)
         cout << "Grid is " << width << "x" << height << " pixels in tiles " << columns << "x" << rows << endl;
     }
 
-    // Extract EXIF data;
-    easyexif::EXIFInfo exifInfo = extractExifData(&reader, contextId, gridItemId);
-
     // Find master tiles to extract
     IdVector tileItemIds;
     reader.getItemListByType(contextId, "master", tileItemIds);
@@ -283,8 +256,6 @@ int convertToJpeg(const string& inputFilename, const string& outputFilename)
 
     AVCodecContext* decoder = getHEVCDecoderContext();
     AVFrame* frame = av_frame_alloc();
-
-    chrono::steady_clock::time_point begin_encode = chrono::steady_clock::now();
 
     vector<VImage> tiles;
 
@@ -311,6 +282,50 @@ int convertToJpeg(const string& inputFilename, const string& outputFilename)
     av_free(decoder);
     av_free(frame);
 
+    // Stitch tiles together
+
+    VImage image = VImage::new_memory();
+
+    image = image.arrayjoin(tiles, VImage::option()->set("across", (int)columns));
+
+    image = image.extract_area(0, 0, width, height);
+
+    return image;
+}
+
+/**
+ * Main entry point
+ * @param inputFilename
+ * @param outputFilename
+ * @param options
+ * @return
+ */
+int convert(const string &inputFilename, const string &outputFilename, cxxopts::Options &options)
+{
+    HevcImageFileReader reader;
+    reader.initialize(inputFilename);
+    const uint32_t contextId = reader.getFileProperties().rootLevelMetaBoxProperties.contextId;
+
+    // Detect grid
+    const IdVector& gridItems = findGridItems(&reader, contextId);
+
+    uint32_t gridItemId = gridItems.at(0);
+
+    VIPS_INIT("tifig");
+    avcodec_register_all();
+
+    chrono::steady_clock::time_point begin_encode = chrono::steady_clock::now();
+
+    VImage image;
+
+    bool useThumbnail = options["thumbnail"].as<bool>();
+
+    if (useThumbnail) {
+        image = getThumbnailImage(reader, contextId, gridItemId);
+    } else {
+        image = getImage(reader, contextId, gridItemId);
+    }
+
     chrono::steady_clock::time_point end_encode = chrono::steady_clock::now();
     long tileEncodeTime = chrono::duration_cast<chrono::milliseconds>(end_encode - begin_encode).count();
 
@@ -318,20 +333,19 @@ int convertToJpeg(const string& inputFilename, const string& outputFilename)
         cout << "Export & encode tiles " << tileEncodeTime << "ms" << endl;
     }
 
-    // Stitch tiles together
-
+    try {
+        // Extract EXIF data;
+        easyexif::EXIFInfo exifInfo = extractExifData(&reader, contextId, gridItemId);
+        image.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
+    }
+    catch (const logic_error& le) {
+        cerr << "Failed to set EXIF orientation: " << le.what() << endl;
+    }
+    
     chrono::steady_clock::time_point begin_buildImage = chrono::steady_clock::now();
 
-    VImage result = VImage::new_memory();
-
-    result = result.arrayjoin(tiles, VImage::option()->set("across", (int)columns));
-
-    result = result.extract_area(0, 0, width, height);
-
-    result.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
-
     char * jpegName = const_cast<char *>(outputFilename.c_str());
-    result.jpegsave(jpegName, VImage::option()->set("Q", QUALITY));
+    image.jpegsave(jpegName, VImage::option()->set("Q", QUALITY));
 
     chrono::steady_clock::time_point end_buildImage = chrono::steady_clock::now();
     long buildImageTime = chrono::duration_cast<chrono::milliseconds>(end_buildImage - begin_buildImage).count();
@@ -339,6 +353,8 @@ int convertToJpeg(const string& inputFilename, const string& outputFilename)
     if (VERBOSE) {
         cout << "Building image " << buildImageTime << "ms" << endl;
     }
+
+    vips_shutdown();
 
     return 0;
 }
@@ -349,10 +365,6 @@ int main(int argc, char* argv[])
     Log::getWarningInstance().setLevel(Log::LogLevel::ERROR);
 
     int retval = -1;
-
-    VIPS_INIT(argv[0]);
-
-    avcodec_register_all();
 
     try {
 
@@ -375,15 +387,10 @@ int main(int argc, char* argv[])
         if (options.count("input") && options.count("output")) {
             string inputFileName = options["input"].as<string>();
             string outputFileName = options["output"].as<string>();
-            bool thumb = options["thumbnail"].as<bool>();
 
             chrono::steady_clock::time_point begin = chrono::steady_clock::now();
 
-            if (thumb) {
-                retval = exportThumbnail(inputFileName, outputFileName);
-            } else {
-                retval = convertToJpeg(inputFileName, outputFileName);
-            }
+            retval = convert(inputFileName, outputFileName, options);
 
             chrono::steady_clock::time_point end = chrono::steady_clock::now();
             long duration = chrono::duration_cast<chrono::milliseconds>(end - begin).count();
@@ -406,8 +413,6 @@ int main(int argc, char* argv[])
     catch (const logic_error& le) {
         cerr << le.what() << endl;
     }
-
-    vips_shutdown();
 
     return retval;
 }
