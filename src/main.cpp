@@ -330,7 +330,7 @@ int convert(const string &inputFilename, const string &outputFilename, cxxopts::
     long tileEncodeTime = chrono::duration_cast<chrono::milliseconds>(end_encode - begin_encode).count();
 
     if (VERBOSE) {
-        cout << "Export & encode tiles " << tileEncodeTime << "ms" << endl;
+        cout << "Export & decode tiles " << tileEncodeTime << "ms" << endl;
     }
 
     try {
