@@ -8,10 +8,20 @@ Converts HEIF images created on iOS 11 devices to JPEG as fast as possible.
 
  * `libav` >= 12.2
  * `libvips` >= 8.3
+ 
+Install the dependencies under a debian based distribution:
 
-## Usage
+```
+# sudo apt-get install libvips-dev libavcodec-dev libswscale-dev
+```
 
-### Build
+On Mac OS X:
+
+```
+# brew install vips libav
+```
+
+## Build
 
 ```
 git clone https://github.com/monostream/tifig.git
@@ -22,7 +32,7 @@ cmake ..
 make
 ```
 
-### Usage
+## Usage
 
 ```
 # tifig -v image.heic output.jpg # get the full picture
