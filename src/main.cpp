@@ -3,6 +3,7 @@
 #include <exif.h>
 #include <hevcimagefilereader.hpp>
 #include <log.hpp>
+#include <thread>
 #include <vips/vips8>
 
 extern "C" {
@@ -26,7 +27,6 @@ static bool VERBOSE = false;
 static int QUALITY = 90;
 
 static struct SwsContext* swsContext;
-
 
 /**
  * Check if image has a grid configuration and return the grid id
@@ -126,7 +126,7 @@ AVCodecContext* getHEVCDecoderContext()
  * Decode HEVC Frame using libav
  * @param hevcData
  * @param frame
- * @return negative value on error, otherwise the bytes used
+ * @return true when successful
  */
 int decodeHEVCFrame(AVCodecContext* c, DataVector& hevcData, AVFrame* frame)
 {
@@ -136,14 +136,57 @@ int decodeHEVCFrame(AVCodecContext* c, DataVector& hevcData, AVFrame* frame)
     avpkt.data = &hevcData[0];
 
     int success;
+
     int ret = avcodec_decode_video2(c, frame, &success, &avpkt);
     if (ret < 0) {
-        throw logic_error("Failed to decode frame, return value: " + to_string(ret));
+        cerr << "Error decoding frame!" << endl;
     }
 
     return success;
 }
 
+struct RgbData
+{
+    uint8_t* data = nullptr;
+    size_t size = 0;
+    int width = 0;
+    int height = 0;
+};
+
+/**
+ * Decode single tile in thread
+ * @param hevcData
+ * @param rgbData
+ */
+void decodeInThread(DataVector hevcData, RgbData* rgbData)
+{
+    if (rgbData == nullptr) {
+        cerr << "No rgbData pointer given" << endl;
+        return;
+    }
+
+    AVCodecContext* c = getHEVCDecoderContext();
+    AVFrame* frame = av_frame_alloc();
+
+    int success = decodeHEVCFrame(c, hevcData, frame);
+    if (!success) {
+        delete rgbData;
+        return;
+    }
+
+    size_t bufferSize = static_cast<size_t>(frame->width * frame->height * 3l); // 3 bytes per pixel;
+
+    rgbData->data = (uint8_t*)malloc(bufferSize),
+    rgbData->size = bufferSize,
+    rgbData->width = frame->width,
+    rgbData->height = frame->height,
+
+            copyFrameInto(frame, rgbData->data, rgbData->size);
+
+    avcodec_close(c);
+    av_free(c);
+    av_free(frame);
+}
 
 /**
  * Extract EXIF data from HEIF
@@ -209,7 +252,7 @@ VImage getThumbnailImage(HevcImageFileReader& reader, uint32_t contextId, uint32
         throw logic_error("Failed to decode HEVC thumbnail");
     }
 
-    size_t bufferSize = static_cast<size_t>(avpicture_get_size(AV_PIX_FMT_RGB24, frame->width, frame->height));
+    size_t bufferSize = static_cast<size_t>(frame->width * frame->height * 3l);  // 3 bytes per pixel;
     uint8_t* rgbBuffer = (uint8_t*)malloc(bufferSize);
     copyFrameInto(frame, rgbBuffer, bufferSize);
 
@@ -254,33 +297,40 @@ VImage getImage(HevcImageFileReader &reader, uint32_t contextId, uint32_t gridIt
 
     // Extract and decode all tiles
 
-    AVCodecContext* decoder = getHEVCDecoderContext();
-    AVFrame* frame = av_frame_alloc();
-
-    vector<VImage> tiles;
+    vector<DataVector> hevcStreams;
+    vector<RgbData*> dataBuffers;
+    vector<thread> threads;
 
     for (uint32_t tileItemId : tileItemIds) {
-
         DataVector hevcData;
         reader.getItemDataWithDecoderParameters(contextId, tileItemId, firstTileId, hevcData);
 
-        if (!decodeHEVCFrame(decoder, hevcData, frame)) {
-            throw logic_error("Failed to decode HEVC tile #" + to_string(tileItemId));
+        hevcStreams.push_back(hevcData);
+    }
+
+    for (DataVector hevcData : hevcStreams) {
+
+        RgbData* data = new RgbData();
+        dataBuffers.push_back(data);
+
+        threads.emplace_back(decodeInThread, hevcData, data);
+    }
+
+    for (thread& t : threads) {
+        t.join();
+    }
+
+    vector<VImage> tiles;
+
+    for (RgbData* data : dataBuffers) {
+        if (data == nullptr) {
+            throw logic_error("Got empty data, something must have gone wrong");
         }
 
-        size_t bufferSize = static_cast<size_t>(avpicture_get_size(AV_PIX_FMT_RGB24, frame->width, frame->height));
-        uint8_t* rgbBuffer = (uint8_t*)malloc(bufferSize);
-        copyFrameInto(frame, rgbBuffer, bufferSize);
-
-        // Load image into vips and save as JPEG
-        VImage img = VImage::new_from_memory(rgbBuffer, bufferSize, frame->width, frame->height, 3, VIPS_FORMAT_UCHAR);
+        VImage img = VImage::new_from_memory(data->data, data->size, data->width, data->height, 3, VIPS_FORMAT_UCHAR);
 
         tiles.push_back(img);
     }
-
-    avcodec_close(decoder);
-    av_free(decoder);
-    av_free(frame);
 
     // Stitch tiles together
 
