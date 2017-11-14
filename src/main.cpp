@@ -29,6 +29,14 @@ static int QUALITY = 90;
 
 static struct SwsContext* swsContext;
 
+struct RgbData
+{
+    uint8_t* data = nullptr;
+    size_t size = 0;
+    int width = 0;
+    int height = 0;
+};
+
 /**
  * Check if image has a grid configuration and return the grid id
  * @param reader
@@ -124,13 +132,15 @@ AVCodecContext* getHEVCDecoderContext()
 }
 
 /**
- * Decode HEVC Frame using libav
+ * Decode HEVC frame and return loadable RGB data
  * @param hevcData
- * @param frame
- * @return true when successful
+ * @param rgbData
  */
-int decodeHEVCFrame(AVCodecContext* c, DataVector& hevcData, AVFrame* frame)
+RgbData decodeFrame(DataVector hevcData)
 {
+    AVCodecContext* c = getHEVCDecoderContext();
+    AVFrame* frame = av_frame_alloc();
+
     AVPacket avpkt = {};
     av_init_packet(&avpkt);
     avpkt.size = static_cast<int>(hevcData.size());
@@ -139,34 +149,8 @@ int decodeHEVCFrame(AVCodecContext* c, DataVector& hevcData, AVFrame* frame)
     int success;
 
     int ret = avcodec_decode_video2(c, frame, &success, &avpkt);
-    if (ret < 0) {
+    if (ret < 0 || !success) {
         cerr << "Error decoding frame!" << endl;
-    }
-
-    return success;
-}
-
-struct RgbData
-{
-    uint8_t* data = nullptr;
-    size_t size = 0;
-    int width = 0;
-    int height = 0;
-};
-
-/**
- * Decode single tile in thread
- * @param hevcData
- * @param rgbData
- */
-RgbData decodeFrameAsync(DataVector hevcData)
-{
-    AVCodecContext* c = getHEVCDecoderContext();
-    AVFrame* frame = av_frame_alloc();
-
-    int success = decodeHEVCFrame(c, hevcData, frame);
-    if (!success) {
-        throw logic_error("Could not decode frame");
     }
 
     size_t bufferSize = static_cast<size_t>(frame->width * frame->height * 3l); // 3 bytes per pixel;
@@ -242,24 +226,10 @@ VImage getThumbnailImage(HevcImageFileReader& reader, uint32_t contextId, uint32
     DataVector hevcData;
     reader.getItemDataWithDecoderParameters(contextId, thmbId, hevcData);
 
-    // Decode HEVC Frame
-    AVCodecContext* decoder = getHEVCDecoderContext();
-    AVFrame* frame = av_frame_alloc();
-
-    if (!decodeHEVCFrame(decoder, hevcData, frame)) {
-        throw logic_error("Failed to decode HEVC thumbnail");
-    }
-
-    size_t bufferSize = static_cast<size_t>(frame->width * frame->height * 3l);  // 3 bytes per pixel;
-    uint8_t* rgbBuffer = (uint8_t*)malloc(bufferSize);
-    copyFrameInto(frame, rgbBuffer, bufferSize);
+    RgbData rgb = decodeFrame(hevcData);
 
     // Load image into vips and save as JPEG
-    VImage thumbImg = VImage::new_from_memory(rgbBuffer, bufferSize, frame->width, frame->height, 3, VIPS_FORMAT_UCHAR);
-
-    avcodec_close(decoder);
-    av_free(decoder);
-    av_free(frame);
+    VImage thumbImg = VImage::new_from_memory(rgb.data, rgb.size, rgb.width, rgb.height, 3, VIPS_FORMAT_UCHAR);
 
     return thumbImg;
 }
@@ -301,15 +271,15 @@ VImage getImage(HevcImageFileReader &reader, uint32_t contextId, uint32_t gridIt
         DataVector hevcData;
         reader.getItemDataWithDecoderParameters(contextId, tileItemId, firstTileId, hevcData);
 
-        decoderResults.push_back(async(decodeFrameAsync, hevcData));
+        decoderResults.push_back(async(decodeFrame, hevcData));
     }
 
     vector<VImage> tiles;
 
     for (future<RgbData>& futureData: decoderResults) {
-        RgbData data = futureData.get();
+        RgbData rgb = futureData.get();
 
-        VImage img = VImage::new_from_memory(data.data, data.size, data.width, data.height, 3, VIPS_FORMAT_UCHAR);
+        VImage img = VImage::new_from_memory(rgb.data, rgb.size, rgb.width, rgb.height, 3, VIPS_FORMAT_UCHAR);
 
         tiles.push_back(img);
     }
