@@ -36,4 +36,4 @@ include_directories(lib/easyexif)
 include_directories(${VIPS_INCLUDE_DIRS})
 
 target_link_libraries(${TIFIG} heifreader cxxopts)
-target_link_libraries(${TIFIG} ${VIPS_CFLAGS} ${VIPS_LDFLAGS} ${LIBAV_LIBRARIES})
+target_link_libraries(${TIFIG} ${VIPS_CFLAGS} ${VIPS_LDFLAGS} ${LIBAV_LIBRARIES} pthread)
