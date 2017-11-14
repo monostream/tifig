@@ -150,7 +150,10 @@ RgbData decodeFrame(DataVector hevcData)
 
     int ret = avcodec_decode_video2(c, frame, &success, &avpkt);
     if (ret < 0 || !success) {
-        cerr << "Error decoding frame!" << endl;
+        char* errorDescription = new char[256];
+        av_strerror(ret, errorDescription, 256);
+        cerr << "Error decoding frame: " << errorDescription << endl;
+        throw ret;
     }
 
     size_t bufferSize = static_cast<size_t>(frame->width * frame->height * 3l); // 3 bytes per pixel;
@@ -414,6 +417,9 @@ int main(int argc, char* argv[])
     }
     catch (const logic_error& le) {
         cerr << le.what() << endl;
+    }
+    catch (...) {
+        cerr << "Conversion failed" << endl;
     }
 
     return retval;
