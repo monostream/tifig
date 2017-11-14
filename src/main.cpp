@@ -4,6 +4,7 @@
 #include <hevcimagefilereader.hpp>
 #include <log.hpp>
 #include <thread>
+#include <future>
 #include <vips/vips8>
 
 extern "C" {
@@ -158,34 +159,31 @@ struct RgbData
  * @param hevcData
  * @param rgbData
  */
-void decodeInThread(DataVector hevcData, RgbData* rgbData)
+RgbData decodeFrameAsync(DataVector hevcData)
 {
-    if (rgbData == nullptr) {
-        cerr << "No rgbData pointer given" << endl;
-        return;
-    }
-
     AVCodecContext* c = getHEVCDecoderContext();
     AVFrame* frame = av_frame_alloc();
 
     int success = decodeHEVCFrame(c, hevcData, frame);
     if (!success) {
-        delete rgbData;
-        return;
+        throw logic_error("Could not decode frame");
     }
 
     size_t bufferSize = static_cast<size_t>(frame->width * frame->height * 3l); // 3 bytes per pixel;
 
-    rgbData->data = (uint8_t*)malloc(bufferSize),
-    rgbData->size = bufferSize,
-    rgbData->width = frame->width,
-    rgbData->height = frame->height,
+    RgbData result = {};
+    result.data = (uint8_t *) malloc(bufferSize);
+    result.size = bufferSize;
+    result.width = frame->width;
+    result.height = frame->height;
 
-            copyFrameInto(frame, rgbData->data, rgbData->size);
+    copyFrameInto(frame, result.data, result.size);
 
     avcodec_close(c);
     av_free(c);
     av_free(frame);
+
+    return result;
 }
 
 /**
@@ -297,37 +295,21 @@ VImage getImage(HevcImageFileReader &reader, uint32_t contextId, uint32_t gridIt
 
     // Extract and decode all tiles
 
-    vector<DataVector> hevcStreams;
-    vector<RgbData*> dataBuffers;
-    vector<thread> threads;
+    vector<future<RgbData>> decoderResults;
 
     for (uint32_t tileItemId : tileItemIds) {
         DataVector hevcData;
         reader.getItemDataWithDecoderParameters(contextId, tileItemId, firstTileId, hevcData);
 
-        hevcStreams.push_back(hevcData);
-    }
-
-    for (DataVector hevcData : hevcStreams) {
-
-        RgbData* data = new RgbData();
-        dataBuffers.push_back(data);
-
-        threads.emplace_back(decodeInThread, hevcData, data);
-    }
-
-    for (thread& t : threads) {
-        t.join();
+        decoderResults.push_back(async(decodeFrameAsync, hevcData));
     }
 
     vector<VImage> tiles;
 
-    for (RgbData* data : dataBuffers) {
-        if (data == nullptr) {
-            throw logic_error("Got empty data, something must have gone wrong");
-        }
+    for (future<RgbData>& futureData: decoderResults) {
+        RgbData data = futureData.get();
 
-        VImage img = VImage::new_from_memory(data->data, data->size, data->width, data->height, 3, VIPS_FORMAT_UCHAR);
+        VImage img = VImage::new_from_memory(data.data, data.size, data.width, data.height, 3, VIPS_FORMAT_UCHAR);
 
         tiles.push_back(img);
     }
