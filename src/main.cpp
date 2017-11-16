@@ -376,7 +376,7 @@ void saveImage(VImage& img, const string& fileName, cxxopts::Options& options)
     long buildImageTime = chrono::duration_cast<chrono::milliseconds>(end_buildImage - begin_buildImage).count();
 
     if (VERBOSE) {
-        cout << "Building image " << buildImageTime << "ms" << endl;
+        cout << "Saving image: " << buildImageTime << "ms" << endl;
     }
 }
 
@@ -418,7 +418,7 @@ int convert(const string& inputFilename, const string& outputFilename, cxxopts::
     long tileEncodeTime = chrono::duration_cast<chrono::milliseconds>(end_encode - begin_encode).count();
 
     if (VERBOSE) {
-        cout << "Export & decode tiles " << tileEncodeTime << "ms" << endl;
+        cout << "Export & decode HEVC: " << tileEncodeTime << "ms" << endl;
     }
 
     try {
@@ -446,7 +446,7 @@ int main(int argc, char* argv[])
 
     try {
 
-        cxxopts::Options options(argv[0], "Convert HEIF images to JPEG");
+        cxxopts::Options options(argv[0], "Converts iOS 11 HEIC images to practical formats");
 
         options.positional_help("input_file output_file");
 
@@ -476,7 +476,7 @@ int main(int argc, char* argv[])
             long duration = chrono::duration_cast<chrono::milliseconds>(end - begin).count();
 
             if (VERBOSE) {
-                cout << "Total Time " << duration << "ms" << endl;
+                cout << "Total Time: " << duration << "ms" << endl;
             }
         } else {
             cout << options.help() << endl;

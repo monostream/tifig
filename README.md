@@ -1,6 +1,6 @@
 # tifig
 
-Converts HEIF images created on iOS 11 devices to JPEG as fast as possible.
+Converts HEIF images created on iOS 11 devices as fast as ~~humanly~~ possible.
 
 *This project is an early alpha and still needs a lot of tweaking!*
 
@@ -35,16 +35,17 @@ make
 ## Usage
 
 ```
-# tifig -v image.heic output.jpg # get the full picture
+# tifig -v -p image.heic output.jpg # get the full picture
 Grid is 4032x3024 pixels in tiles 8x6
-Export & decode tiles 190ms
-Building image 125ms
-Total Time 324ms
+Export & decode HEVC: 97ms
+Saving image: 55ms
+Total Time: 160ms
 ```
 
 ```
 # tifig -v -t image.heic thumbnail.jpg # get the embedded thumbnail
-320x240 pixels 
+Export & decode HEVC: 2ms
+Saving image: 3ms
 Total Time 5ms
 ```
 
