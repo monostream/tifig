@@ -308,6 +308,41 @@ VImage getImage(HevcImageFileReader& reader, uint32_t contextId, uint32_t gridIt
     return image;
 }
 
+/**
+ * Rotate image according to Exif orientation when necessary
+ * @param in
+ * @return
+ */
+VImage rotateImage(VImage& in)
+{
+    int orientation = in.get_int(VIPS_META_ORIENTATION);
+
+    switch (orientation) {
+        case 2:
+            return in.flip(VIPS_DIRECTION_HORIZONTAL);
+        case 3:
+            return in.rot180();
+        case 4:
+            return in.flip(VIPS_DIRECTION_VERTICAL);
+        case 5:
+            return in.rot90().flip(VIPS_DIRECTION_HORIZONTAL);
+        case 6:
+            return in.rot90();
+        case 7:
+            return in.rot270().flip(VIPS_DIRECTION_HORIZONTAL);
+        case 8:
+            return in.rot270();
+        default:
+            return in;
+    }
+}
+
+/**
+ * Save created image to file
+ * @param img
+ * @param fileName
+ * @param options
+ */
 void saveImage(VImage& img, const string& fileName, cxxopts::Options& options)
 {
     chrono::steady_clock::time_point begin_buildImage = chrono::steady_clock::now();
@@ -316,23 +351,23 @@ void saveImage(VImage& img, const string& fileName, cxxopts::Options& options)
 
     string ext = fileName.substr(fileName.find_last_of(".") + 1);
 
+    // Supported image output formats
     set<string> jpgExt = {"jpg", "jpeg", "JPG", "JPEG"};
     set<string> pngExt = {"png", "PNG"};
     set<string> tiffExt = {"tiff", "TIFF"};
-    set<string> webpExt = {"webp", "WEBP"};
     set<string> ppmExt = {"ppm", "PPM"};
 
     if (jpgExt.find(ext) != jpgExt.end()) {
         int quality = options["quality"].as<int>();
         img.jpegsave(outName, VImage::option()->set("Q", quality));
-    } else if (pngExt.find(ext) != pngExt.end()) {
-        img.pngsave(outName);
     } else if (tiffExt.find(ext) != tiffExt.end()) {
+        img = rotateImage(img);
+        img.set(VIPS_META_ORIENTATION, 0);
         img.tiffsave(outName);
-    } else if (webpExt.find(ext) != webpExt.end()) {
-        img.webpsave(outName);
+    } else if (pngExt.find(ext) != pngExt.end()) {
+        rotateImage(img).pngsave(outName);
     } else if (ppmExt.find(ext) != ppmExt.end()) {
-        img.ppmsave(outName);
+        rotateImage(img).ppmsave(outName);
     } else {
         throw logic_error("Unknown image extension: " + ext);
     }
