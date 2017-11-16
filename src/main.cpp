@@ -245,7 +245,7 @@ VImage getThumbnailImage(HevcImageFileReader& reader, uint32_t contextId, uint32
  * @param gridItemId
  * @return
  */
-VImage getImage(HevcImageFileReader &reader, uint32_t contextId, uint32_t gridItemId)
+VImage getImage(HevcImageFileReader &reader, uint32_t contextId, uint32_t gridItemId, bool parallel = false)
 {
     GridItem gridItem;
     gridItem = reader.getItemGrid(contextId, gridItemId);
@@ -268,23 +268,32 @@ VImage getImage(HevcImageFileReader &reader, uint32_t contextId, uint32_t gridIt
 
     // Extract and decode all tiles
 
+    vector<VImage> tiles;
     vector<future<RgbData>> decoderResults;
 
     for (uint32_t tileItemId : tileItemIds) {
         DataVector hevcData;
         reader.getItemDataWithDecoderParameters(contextId, tileItemId, firstTileId, hevcData);
 
-        decoderResults.push_back(async(decodeFrame, hevcData));
+        if (parallel) {
+            decoderResults.push_back(async(decodeFrame, hevcData));
+        } else {
+            RgbData rgb = decodeFrame(hevcData);
+
+            VImage img = VImage::new_from_memory(rgb.data, rgb.size, rgb.width, rgb.height, 3, VIPS_FORMAT_UCHAR);
+
+            tiles.push_back(img);
+        }
     }
 
-    vector<VImage> tiles;
+    if (parallel) {
+        for (future<RgbData> &futureData: decoderResults) {
+            RgbData rgb = futureData.get();
 
-    for (future<RgbData>& futureData: decoderResults) {
-        RgbData rgb = futureData.get();
+            VImage img = VImage::new_from_memory(rgb.data, rgb.size, rgb.width, rgb.height, 3, VIPS_FORMAT_UCHAR);
 
-        VImage img = VImage::new_from_memory(rgb.data, rgb.size, rgb.width, rgb.height, 3, VIPS_FORMAT_UCHAR);
-
-        tiles.push_back(img);
+            tiles.push_back(img);
+        }
     }
 
     // Stitch tiles together
@@ -324,11 +333,12 @@ int convert(const string &inputFilename, const string &outputFilename, cxxopts::
     VImage image;
 
     bool useThumbnail = options["thumbnail"].as<bool>();
+    bool decodeParallel = options["parallel"].as<bool>();
 
     if (useThumbnail) {
         image = getThumbnailImage(reader, contextId, gridItemId);
     } else {
-        image = getImage(reader, contextId, gridItemId);
+        image = getImage(reader, contextId, gridItemId, decodeParallel);
     }
 
     chrono::steady_clock::time_point end_encode = chrono::steady_clock::now();
@@ -384,6 +394,7 @@ int main(int argc, char* argv[])
                 ("o,output", "Output JPEG image", cxxopts::value<string>())
                 ("q,quality", "Output JPEG quality (1-100) default 90", cxxopts::value<int>(QUALITY))
                 ("v,verbose", "Verbose output", cxxopts::value<bool>(VERBOSE))
+                ("p,parallel", "Decode tiles in parallel", cxxopts::value<bool>())
                 ("t,thumbnail", "Export thumbnail", cxxopts::value<bool>())
                 ;
 
