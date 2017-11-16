@@ -25,7 +25,6 @@ typedef ImageFileReaderInterface::FileReaderException FileReaderException;
 
 // Global vars
 static bool VERBOSE = false;
-static int QUALITY = 90;
 
 static struct SwsContext* swsContext;
 
@@ -43,7 +42,7 @@ struct RgbData
  * @param contextId
  * @return
  */
-IdVector findGridItems(const HevcImageFileReader *reader, uint32_t contextId)
+IdVector findGridItems(const HevcImageFileReader* reader, uint32_t contextId)
 {
     IdVector gridItemIds;
     reader->getItemListByType(contextId, "grid", gridItemIds);
@@ -62,7 +61,7 @@ IdVector findGridItems(const HevcImageFileReader *reader, uint32_t contextId)
  * @param itemId
  * @return
  */
-uint32_t findThumbnailId(const HevcImageFileReader *reader, uint32_t contextId, uint32_t itemId)
+uint32_t findThumbnailId(const HevcImageFileReader* reader, uint32_t contextId, uint32_t itemId)
 {
     IdVector thmbIds;
     reader->getReferencedToItemListByType(contextId, itemId, "thmb", thmbIds);
@@ -81,7 +80,7 @@ uint32_t findThumbnailId(const HevcImageFileReader *reader, uint32_t contextId, 
  * @param dst_size
  * @return the number of bytes written to dst, or a negative value on error
  */
-int copyFrameInto(AVFrame *frame, uint8_t *dst, size_t dst_size)
+int copyFrameInto(AVFrame* frame, uint8_t* dst, size_t dst_size)
 {
     AVFrame* imgFrame = av_frame_alloc();
     int width = frame->width;
@@ -180,7 +179,7 @@ RgbData decodeFrame(DataVector hevcData)
  * @param itemId
  * @return
  */
-easyexif::EXIFInfo extractExifData(HevcImageFileReader *reader, uint32_t contextId, uint32_t itemId)
+easyexif::EXIFInfo extractExifData(HevcImageFileReader* reader, uint32_t contextId, uint32_t itemId)
 {
     IdVector exifItemIds;
     DataVector exifData;
@@ -238,6 +237,8 @@ VImage getThumbnailImage(HevcImageFileReader& reader, uint32_t contextId, uint32
 }
 
 
+
+
 /**
  * Build image from HEIC grid item
  * @param reader
@@ -245,7 +246,7 @@ VImage getThumbnailImage(HevcImageFileReader& reader, uint32_t contextId, uint32
  * @param gridItemId
  * @return
  */
-VImage getImage(HevcImageFileReader &reader, uint32_t contextId, uint32_t gridItemId, bool parallel = false)
+VImage getImage(HevcImageFileReader& reader, uint32_t contextId, uint32_t gridItemId, bool parallel = false)
 {
     GridItem gridItem;
     gridItem = reader.getItemGrid(contextId, gridItemId);
@@ -307,6 +308,43 @@ VImage getImage(HevcImageFileReader &reader, uint32_t contextId, uint32_t gridIt
     return image;
 }
 
+void saveImage(VImage& img, const string& fileName, cxxopts::Options& options)
+{
+    chrono::steady_clock::time_point begin_buildImage = chrono::steady_clock::now();
+
+    char * outName = const_cast<char *>(fileName.c_str());
+
+    string ext = fileName.substr(fileName.find_last_of(".") + 1);
+
+    set<string> jpgExt = {"jpg", "jpeg", "JPG", "JPEG"};
+    set<string> pngExt = {"png", "PNG"};
+    set<string> tiffExt = {"tiff", "TIFF"};
+    set<string> webpExt = {"webp", "WEBP"};
+    set<string> ppmExt = {"ppm", "PPM"};
+
+    if (jpgExt.find(ext) != jpgExt.end()) {
+        int quality = options["quality"].as<int>();
+        img.jpegsave(outName, VImage::option()->set("Q", quality));
+    } else if (pngExt.find(ext) != pngExt.end()) {
+        img.pngsave(outName);
+    } else if (tiffExt.find(ext) != tiffExt.end()) {
+        img.tiffsave(outName);
+    } else if (webpExt.find(ext) != webpExt.end()) {
+        img.webpsave(outName);
+    } else if (ppmExt.find(ext) != ppmExt.end()) {
+        img.ppmsave(outName);
+    } else {
+        throw logic_error("Unknown image extension: " + ext);
+    }
+
+    chrono::steady_clock::time_point end_buildImage = chrono::steady_clock::now();
+    long buildImageTime = chrono::duration_cast<chrono::milliseconds>(end_buildImage - begin_buildImage).count();
+
+    if (VERBOSE) {
+        cout << "Building image " << buildImageTime << "ms" << endl;
+    }
+}
+
 /**
  * Main entry point
  * @param inputFilename
@@ -314,7 +352,7 @@ VImage getImage(HevcImageFileReader &reader, uint32_t contextId, uint32_t gridIt
  * @param options
  * @return
  */
-int convert(const string &inputFilename, const string &outputFilename, cxxopts::Options &options)
+int convert(const string& inputFilename, const string& outputFilename, cxxopts::Options& options)
 {
     HevcImageFileReader reader;
     reader.initialize(inputFilename);
@@ -356,18 +394,8 @@ int convert(const string &inputFilename, const string &outputFilename, cxxopts::
     catch (const logic_error& le) {
         cerr << "Failed to set EXIF orientation: " << le.what() << endl;
     }
-    
-    chrono::steady_clock::time_point begin_buildImage = chrono::steady_clock::now();
 
-    char * jpegName = const_cast<char *>(outputFilename.c_str());
-    image.jpegsave(jpegName, VImage::option()->set("Q", QUALITY));
-
-    chrono::steady_clock::time_point end_buildImage = chrono::steady_clock::now();
-    long buildImageTime = chrono::duration_cast<chrono::milliseconds>(end_buildImage - begin_buildImage).count();
-
-    if (VERBOSE) {
-        cout << "Building image " << buildImageTime << "ms" << endl;
-    }
+    saveImage(image, outputFilename, options);
 
     vips_shutdown();
 
@@ -391,8 +419,9 @@ int main(int argc, char* argv[])
 
         options.add_options()
                 ("i,input", "Input HEIF image", cxxopts::value<string>())
-                ("o,output", "Output JPEG image", cxxopts::value<string>())
-                ("q,quality", "Output JPEG quality (1-100) default 90", cxxopts::value<int>(QUALITY))
+                ("o,output", "Output image path", cxxopts::value<string>())
+                ("q,quality", "Output JPEG quality", cxxopts::value<int>()
+                        ->default_value("90")->implicit_value("90"))
                 ("v,verbose", "Verbose output", cxxopts::value<bool>(VERBOSE))
                 ("p,parallel", "Decode tiles in parallel", cxxopts::value<bool>())
                 ("t,thumbnail", "Export thumbnail", cxxopts::value<bool>())
