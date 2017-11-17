@@ -1,5 +1,9 @@
 language: cpp
 
+env:
+  global:
+    - LINUX_DIST=trusty
+
 matrix:
   include:
     - os: linux
@@ -14,7 +18,7 @@ before_install:
   # Install dependencies
     - |
       if [[ ${TRAVIS_OS_NAME} == "linux" ]]; then
-        sudo add-apt-repository -y ppa:dhor/myway
+        sudo add-apt-repository -y ppa:teivg/graph
         sudo add-apt-repository -y ppa:george-edison55/cmake-3.x
         sudo apt-get update
         sudo ldconfig
@@ -31,6 +35,7 @@ install:
     - |
       if [[ ${TRAVIS_OS_NAME} == "linux" ]]; then
         sudo apt-get install -qq -y cmake3 libvips-dev libavcodec-dev libswscale-dev
+        sudo ldconfig
       elif [[ ${TRAVIS_OS_NAME} == "osx" ]]; then
         brew install libav || brew upgrade libav
         brew install vips || brew upgrade vips
@@ -45,4 +50,5 @@ script:
      - cmake .. 
      - make
      - ./tifig -v ../fixtures/1.heic test.jpg
-
+     - ./tifig -v -p ../fixtures/1.heic parallel.jpg
+     - ./tifig -v -t ../fixtures/1.heic thumb.jpg
