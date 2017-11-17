@@ -21,13 +21,16 @@ matrix:
           sources: &trusty_pocl_sources
             - ubuntu-toolchain-r-test
 
-    - os: osx
-      compiler: gcc         
+    # - os: osx
+    #   compiler: gcc
 
 before_install:
   # Install dependencies
     - |
-      if [[ ${TRAVIS_OS_NAME} == "osx" ]]; then 
+      if [[ ${TRAVIS_OS_NAME} == "linux" ]]; then
+        sudo apt-get install -qq -y build-essential pkg-config glib2.0-dev libexpat1-dev liblcms2-dev libjpeg-dev libexif-dev
+        sudo apt-get install -qq -y libavcodec-dev libswscale-dev
+      elif [[ ${TRAVIS_OS_NAME} == "osx" ]]; then 
         brew update
         brew outdated cmake || brew upgrade cmake
       fi
@@ -45,7 +48,15 @@ install:
         mkdir -p ${DEPS_DIR}/cmake
         travis_retry wget --no-check-certificate --quiet -O - ${CMAKE_URL} | tar --strip-components=1 -xz -C ${DEPS_DIR}/cmake
         export PATH=${DEPS_DIR}/cmake/bin:${PATH}
-        sudo apt-get install -qq -y libvips-dev libavcodec-dev libswscale-dev
+
+        VIPS_URL="https://github.com/jcupitt/libvips/releases/download/v8.5.9/vips-8.5.9.tar.gz"
+        travis_retry wget --no-check-certificate --quiet -O - ${VIPS_URL} | tar -xz -C ${TRAVIS_BUILD_DIR}
+        cd ${TRAVIS_BUILD_DIR}/vips-8.5.9
+        ./configure -s
+        make -s
+        sudo make install
+        cd -
+
         sudo ldconfig
       elif [[ ${TRAVIS_OS_NAME} == "osx" ]]; then
         brew install libav || brew upgrade libav
