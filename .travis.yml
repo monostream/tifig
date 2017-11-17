@@ -19,8 +19,9 @@ before_install:
     - |
       if [[ ${TRAVIS_OS_NAME} == "linux" ]]; then
         sudo add-apt-repository -y ppa:teivg/graph
-        sudo add-apt-repository -y ppa:lszemeredi/ffmpeg
+        sudo add-apt-repository -y ppa:jonathonf/ffmpeg-3
         sudo add-apt-repository -y ppa:george-edison55/cmake-3.x
+        sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
         sudo apt-get update
         sudo ldconfig
       elif [[ ${TRAVIS_OS_NAME} == "osx" ]]; then
@@ -35,7 +36,8 @@ install:
 
     - |
       if [[ ${TRAVIS_OS_NAME} == "linux" ]]; then
-        sudo apt-get install -qq -y cmake3 libvips-dev libavcodec-dev libswscale-dev
+        sudo apt-get install -qq -y gcc-5 cmake3 libvips-dev libavcodec-dev libswscale-dev
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-5 100
         sudo ldconfig
       elif [[ ${TRAVIS_OS_NAME} == "osx" ]]; then
         brew install libav || brew upgrade libav
