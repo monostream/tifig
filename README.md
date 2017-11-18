@@ -30,10 +30,8 @@ On Mac OS X:
 ## Build
 
 ```
-git clone https://github.com/monostream/tifig.git
-cd tifig
-git submodule update --init
-mkdir build && cd build
+git clone --recursive https://github.com/monostream/tifig.git
+mkdir tifig/build && cd tifig/build
 cmake ..
 make
 ```
