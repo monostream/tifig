@@ -1,0 +1,9 @@
+# Don't add this stuff when building docker image
+build
+cmake-build-debug
+Dockerfile
+.git
+.gitignore
+.gitmodules
+.idea
+.travis.yml
