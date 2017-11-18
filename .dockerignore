@@ -2,8 +2,10 @@
 build
 cmake-build-debug
 Dockerfile
-.git
-.gitignore
+lib/easyexif/test-images
+lib/heif/Docs/JavaScript
+**/.git
+**/.gitignore
 .gitmodules
 .idea
 .travis.yml
