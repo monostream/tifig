@@ -5,6 +5,7 @@ services:
 - docker
 
 script:
+- docker pull guetux/alpine_vips_ffmpeg
 - docker build -t tifig .
 - docker run -t --rm -w /tifig/build tifig ./tifig -v ../fixtures/1.heic test.jpg
 - docker run -t --rm -w /tifig/build tifig ./tifig -v -t ../fixtures/1.heic thumb.jpg

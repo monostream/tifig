@@ -3,7 +3,7 @@ MAINTAINER Stefan Reinhard, Flavian Sierk
 
 ADD . /tifig
 RUN \
-	mkdir /tifig/build && \
-    cd /tifig/build && \
-    cmake .. && \
-    make
+ mkdir /tifig/build && \
+ cd /tifig/build && \
+ cmake .. && \
+ make
