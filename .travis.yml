@@ -7,8 +7,8 @@ services:
 script:
 - docker pull guetux/alpine_vips_ffmpeg
 - docker build -t guetux/tifig .
-- docker run -t --rm -w /tifig/build guetux/tifig ./tifig -v ../fixtures/1.heic test.jpg
-- docker run -t --rm -w /tifig/build guetux/tifig ./tifig -v -t ../fixtures/1.heic thumb.jpg
+- docker run -t --rm -w /tifig/build guetux/tifig ./tifig -v ../fixtures/1_portrait.heic test.jpg
+- docker run -t --rm -w /tifig/build guetux/tifig ./tifig -v -t ../fixtures/1_portrait.heic thumb.jpg
 
 after_success:
   - if [ "$TRAVIS_BRANCH" == "master" ]; then

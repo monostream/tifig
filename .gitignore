@@ -18,5 +18,8 @@ heifthumb.cbp
 *.user
 *.idea
 
-# Llama stuff
-thumb.bmp
+# test outputs
+test/butteraugli-master
+test/*.ppm
+test/*.png
+test/*.jpg
