@@ -140,22 +140,28 @@ RgbData decodeFrame(DataVector hevcData)
     AVCodecContext* c = getHEVCDecoderContext();
     AVFrame* frame = av_frame_alloc();
 
-    AVPacket avpkt = {};
-    av_init_packet(&avpkt);
-    avpkt.size = static_cast<int>(hevcData.size());
-    avpkt.data = &hevcData[0];
+    AVPacket* packet = av_packet_alloc();
+    packet->size = static_cast<int>(hevcData.size());
+    packet->data = &hevcData[0];
 
-    int success;
+    char* errorDescription = new char[256];
 
-    int ret = avcodec_decode_video2(c, frame, &success, &avpkt);
-    if (ret < 0 || !success) {
-        char* errorDescription = new char[256];
-        av_strerror(ret, errorDescription, 256);
-        cerr << "Error decoding frame: " << errorDescription << endl;
-        throw ret;
+    int sent = avcodec_send_packet(c, packet);
+    if (sent < 0)
+    {
+        av_strerror(sent, errorDescription, 256);
+        cerr << "Error sending packet to HEVC decoder: " << errorDescription << endl;
+        throw sent;
     }
 
-    size_t bufferSize = static_cast<size_t>(frame->width * frame->height * 3l); // 3 bytes per pixel;
+    int success = avcodec_receive_frame(c, frame);
+    if (success != 0) {
+        av_strerror(success, errorDescription, 256);
+        cerr << "Error decoding frame: " << errorDescription << endl;
+        throw success;
+    }
+
+    size_t bufferSize = static_cast<size_t>(av_image_get_buffer_size(AV_PIX_FMT_RGB24, frame->width, frame->height, 1));
 
     RgbData result = {};
     result.data = (uint8_t *) malloc(bufferSize);
