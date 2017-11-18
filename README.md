@@ -9,8 +9,8 @@ Converts HEIF images created on iOS 11 devices as fast as ~~humanly~~ possible
 ## Build Dependencies
 
  * `libvips` >= 8.3
-  *`libavcodec` >= 3.1
-  *`libswscale` >= 3.1
+ * `libavcodec` >= 3.1
+ * `libswscale` >= 3.1
  
 Install the dependencies under a debian based distribution:
 
