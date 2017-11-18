@@ -4,6 +4,8 @@ Converts HEIF images created on iOS 11 devices as fast as ~~humanly~~ possible
 
 *This project is an early alpha and still needs a lot of tweaking!*
 
+[![Build Status](https://travis-ci.org/monostream/tifig.svg?branch=master)](https://travis-ci.org/monostream/tifig)
+
 ## Build Dependencies
 
  * `libvips` >= 8.3
