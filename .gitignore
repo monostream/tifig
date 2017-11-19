@@ -18,5 +18,6 @@ heifthumb.cbp
 *.user
 *.idea
 
-# Llama stuff
-thumb.bmp
+# test data
+test/venv
+test/*.tiff

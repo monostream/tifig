@@ -1,0 +1,2 @@
+colorprint==0.1
+pyssim==0.4

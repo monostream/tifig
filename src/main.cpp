@@ -368,7 +368,7 @@ void saveImage(VImage& img, const string& fileName, cxxopts::Options& options)
         img.jpegsave(outName, VImage::option()->set("Q", quality));
     } else if (tiffExt.find(ext) != tiffExt.end()) {
         img = rotateImage(img);
-        img.set(VIPS_META_ORIENTATION, 0);
+        img.set(VIPS_META_ORIENTATION, 1);
         img.tiffsave(outName);
     } else if (pngExt.find(ext) != pngExt.end()) {
         rotateImage(img).pngsave(outName);
