@@ -77,9 +77,9 @@ def run_similarity_test():
 
 if __name__ == "__main__":
 	print()
-	print('######################################', color='blue')
-	print('# Running tifig regression test suit #', color='blue')
-	print('######################################', color='blue')
+	print('#######################################', color='blue')
+	print('# Running tifig regression test suite #', color='blue')
+	print('#######################################', color='blue')
 	print()
 
 	# make sure this is callable from everywhere
