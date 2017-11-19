@@ -1,2 +1,2 @@
 colorprint==0.1
-scikit-image==0.13.1
+pyssim==0.4

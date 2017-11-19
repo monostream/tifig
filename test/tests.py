@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 from __future__ import print_function, unicode_literals
-import os, sys, subprocess, skimage.io, skimage.measure
 from colorprint import *
+from PIL import Image
+from ssim import compute_ssim
+import os, sys, subprocess
 
 test_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -56,10 +58,10 @@ def run_similarity_test():
 
 		print('> Comparing visual similarity', color='cyan')
 		
-		ref_img = skimage.io.imread(ref)
-		converted_img = skimage.io.imread(converted)
+		ref_img = Image.open(ref)
+		converted_img = Image.open(converted)
 
-		ssim = skimage.measure.compare_ssim(ref_img, converted_img, multichannel=True)
+		ssim = compute_ssim(ref_img, converted_img)
 
 		if (ssim < ssim_min_value):
 			print('Similarity: %2.1f%%' % (ssim * 100), color='red')
