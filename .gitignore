@@ -18,8 +18,6 @@ heifthumb.cbp
 *.user
 *.idea
 
-# test outputs
-test/butteraugli-master
-test/*.ppm
-test/*.png
-test/*.jpg
+# test data
+test/venv
+test/*.tiff
