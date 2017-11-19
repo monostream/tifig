@@ -20,4 +20,4 @@ heifthumb.cbp
 
 # test data
 test/venv
-test/*.tiff
+test/*.jpg
