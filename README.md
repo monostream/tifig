@@ -24,7 +24,7 @@ Install the dependencies under a debian based distribution:
 On Mac OS X:
 
 ```
-# brew install vips libav
+# brew install vips ffmpeg
 ```
 
 ## Build
