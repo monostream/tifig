@@ -10,12 +10,12 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wno-implicit-fallthrough")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wno-unused-parameter")
 
 option(STATIC_BUILD "Build tifig static")
 
 if (STATIC_BUILD)
-	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -s -static-libstdc++")	
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -s")	
     set(BUILD_SHARED_LIBS OFF)
     set(BUILD_STATIC_LIBS ON)
 endif()
