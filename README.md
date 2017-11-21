@@ -55,8 +55,9 @@ Total Time 5ms
 
 ## ToDo's
 
-  * Testing 
-  * Create independant static binary
+  * ~~Testing~~ 
+  * ~~Create independant static binary~~
+  * Keep exif metadata in coverted images
   * Cleanup and optimizing 
   
 ## Software Used / Libraries
