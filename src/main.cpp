@@ -36,6 +36,16 @@ struct RgbData
     int height = 0;
 };
 
+struct Opts
+{
+    int width = 0;
+    int height = 0;
+    int quality = 90;
+    bool crop = false;
+    bool parallel = false;
+    bool thumbnail = false;
+};
+
 /**
  * Check if image has a grid configuration and return the grid id
  * @param reader
@@ -133,7 +143,6 @@ AVCodecContext* getHEVCDecoderContext()
 /**
  * Decode HEVC frame and return loadable RGB data
  * @param hevcData
- * @param rgbData
  */
 RgbData decodeFrame(DataVector hevcData)
 {
@@ -243,8 +252,6 @@ VImage getThumbnailImage(HevcImageFileReader& reader, uint32_t contextId, uint32
 }
 
 
-
-
 /**
  * Build image from HEIC grid item
  * @param reader
@@ -274,7 +281,6 @@ VImage getImage(HevcImageFileReader& reader, uint32_t contextId, uint32_t gridIt
     uint32_t firstTileId = tileItemIds.at(0);
 
     // Extract and decode all tiles
-
     vector<VImage> tiles;
     vector<future<RgbData>> decoderResults;
 
@@ -304,15 +310,36 @@ VImage getImage(HevcImageFileReader& reader, uint32_t contextId, uint32_t gridIt
     }
 
     // Stitch tiles together
-
     VImage image = VImage::new_memory();
-
     image = image.arrayjoin(tiles, VImage::option()->set("across", (int)columns));
-
     image = image.extract_area(0, 0, width, height);
 
     return image;
 }
+
+/**
+ * Resize the output image using vips thumbnail logic
+ * @param img
+ * @param options
+ * @return
+ */
+VImage createVipsThumbnail(VImage& img, Opts& options)
+{
+    // This is a bit strange, we have to encode the image into a buffer first
+    // However, TIFF encoding is quite fast
+    VipsBlob* imgBlob = img.autorot().tiffsave_buffer(VImage::option()->set("strip", true));
+
+    // Build thumbnail options from aguments
+    VOption* thumbnailOptions = VImage::option();
+    if (options.height > 0)
+        thumbnailOptions->set("height", options.height);
+    if (options.crop)
+        thumbnailOptions->set("crop", VIPS_INTERESTING_CENTRE);
+
+    // Now load vips thumbnail from that buffer
+    return VImage::thumbnail_buffer(imgBlob, options.width, thumbnailOptions);
+}
+
 
 /**
  * Save created image to file
@@ -320,27 +347,24 @@ VImage getImage(HevcImageFileReader& reader, uint32_t contextId, uint32_t gridIt
  * @param fileName
  * @param options
  */
-void saveImage(VImage& img, const string& fileName, cxxopts::Options& options)
+void saveImage(VImage& img, const string& fileName, Opts& options)
 {
     chrono::steady_clock::time_point begin_buildImage = chrono::steady_clock::now();
 
     char * outName = const_cast<char *>(fileName.c_str());
 
-    string ext = fileName.substr(fileName.find_last_of(".") + 1);
+    string ext = fileName.substr(fileName.find_last_of('.') + 1);
 
-    // Supported image output formats
+    // Supported image output formats
     set<string> jpgExt = {"jpg", "jpeg", "JPG", "JPEG"};
     set<string> pngExt = {"png", "PNG"};
     set<string> tiffExt = {"tiff", "TIFF"};
     set<string> ppmExt = {"ppm", "PPM"};
 
     if (jpgExt.find(ext) != jpgExt.end()) {
-        int quality = options["quality"].as<int>();
-        img.jpegsave(outName, VImage::option()->set("Q", quality));
+        img.jpegsave(outName, VImage::option()->set("Q", options.quality));
     } else if (tiffExt.find(ext) != tiffExt.end()) {
-        img = img.autorot();
-        img.set(VIPS_META_ORIENTATION, 1);
-        img.tiffsave(outName);
+        img.autorot().tiffsave(outName, VImage::option()->set("strip", true));
     } else if (pngExt.find(ext) != pngExt.end()) {
         img.autorot().pngsave(outName);
     } else if (ppmExt.find(ext) != ppmExt.end()) {
@@ -357,6 +381,7 @@ void saveImage(VImage& img, const string& fileName, cxxopts::Options& options)
     }
 }
 
+
 /**
  * Main entry point
  * @param inputFilename
@@ -364,7 +389,7 @@ void saveImage(VImage& img, const string& fileName, cxxopts::Options& options)
  * @param options
  * @return
  */
-int convert(const string& inputFilename, const string& outputFilename, cxxopts::Options& options)
+int convert(const string& inputFilename, const string& outputFilename, Opts& options)
 {
     HevcImageFileReader reader;
     reader.initialize(inputFilename);
@@ -380,15 +405,23 @@ int convert(const string& inputFilename, const string& outputFilename, cxxopts::
 
     chrono::steady_clock::time_point begin_encode = chrono::steady_clock::now();
 
+    bool useEmbeddedThumbnail = options.thumbnail;
+    bool createOutputThumbnail = options.width > 0;
+
+    // Detect if we safely can use the embedded thumbnail to create output thumbnail
+    if (createOutputThumbnail) {
+
+        if (options.width <= 240 && options.height <= 240) {
+            useEmbeddedThumbnail = true;
+        }
+    }
+
+    // Get the actual image content from file
     VImage image;
-
-    bool useThumbnail = options["thumbnail"].as<bool>();
-    bool decodeParallel = options["parallel"].as<bool>();
-
-    if (useThumbnail) {
+    if (useEmbeddedThumbnail) {
         image = getThumbnailImage(reader, contextId, gridItemId);
     } else {
-        image = getImage(reader, contextId, gridItemId, decodeParallel);
+        image = getImage(reader, contextId, gridItemId, options.parallel);
     }
 
     chrono::steady_clock::time_point end_encode = chrono::steady_clock::now();
@@ -404,7 +437,12 @@ int convert(const string& inputFilename, const string& outputFilename, cxxopts::
         image.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
     }
     catch (const logic_error& le) {
-        cerr << "Failed to set EXIF orientation: " << le.what() << endl;
+        cerr << "Failed to set EXIF orientation: " << le.what() << endl;
+    }
+
+    if (createOutputThumbnail)
+    {
+        image = createVipsThumbnail(image, options);
     }
 
     saveImage(image, outputFilename, options);
@@ -413,6 +451,28 @@ int convert(const string& inputFilename, const string& outputFilename, cxxopts::
 
     return 0;
 }
+
+
+Opts getTifigOptions(cxxopts::Options& options)
+{
+    Opts opts = {};
+
+    if (options.count("width"))
+        opts.width = options["width"].as<int>();
+    if (options.count("height"))
+        opts.height = options["height"].as<int>();
+    if (options.count("quality"))
+        opts.quality = options["quality"].as<int>();
+    if (options.count("crop"))
+        opts.crop = true;
+    if (options.count("parallel"))
+        opts.parallel = true;
+    if (options.count("thumbnail"))
+        opts.thumbnail = true;
+
+    return opts;
+}
+
 
 int main(int argc, char* argv[])
 {
@@ -430,13 +490,16 @@ int main(int argc, char* argv[])
         options.parse_positional(vector<string>{"input", "output"});
 
         options.add_options()
-                ("i,input", "Input HEIF image", cxxopts::value<string>())
-                ("o,output", "Output image path", cxxopts::value<string>())
-                ("q,quality", "Output JPEG quality", cxxopts::value<int>()
+                ("i, input", "Input HEIF image", cxxopts::value<string>())
+                ("o, output", "Output image path", cxxopts::value<string>())
+                ("q, quality", "Output JPEG quality", cxxopts::value<int>()
                         ->default_value("90")->implicit_value("90"))
-                ("v,verbose", "Verbose output", cxxopts::value<bool>(VERBOSE))
-                ("p,parallel", "Decode tiles in parallel", cxxopts::value<bool>())
-                ("t,thumbnail", "Export thumbnail", cxxopts::value<bool>())
+                ("v, verbose", "Verbose output", cxxopts::value<bool>(VERBOSE))
+                ("w, width", "Width of output image", cxxopts::value<int>())
+                ("h, height", "Height of output image", cxxopts::value<int>())
+                ("c, crop", "Smartcrop image to fit given size", cxxopts::value<bool>())
+                ("p, parallel", "Decode tiles in parallel", cxxopts::value<bool>())
+                ("t, thumbnail", "Use embedded thumbnail", cxxopts::value<bool>())
                 ;
 
         options.parse(argc, argv);
@@ -445,9 +508,11 @@ int main(int argc, char* argv[])
             string inputFileName = options["input"].as<string>();
             string outputFileName = options["output"].as<string>();
 
+            Opts tifigOptions = getTifigOptions(options);
+
             chrono::steady_clock::time_point begin = chrono::steady_clock::now();
 
-            retval = convert(inputFileName, outputFileName, options);
+            retval = convert(inputFileName, outputFileName, tifigOptions);
 
             chrono::steady_clock::time_point end = chrono::steady_clock::now();
             long duration = chrono::duration_cast<chrono::milliseconds>(end - begin).count();
