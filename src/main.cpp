@@ -36,7 +36,6 @@ struct RgbData
     int height = 0;
 };
 
-// tifig runtime options
 struct Opts
 {
     int width = 0;
@@ -144,7 +143,6 @@ AVCodecContext* getHEVCDecoderContext()
 /**
  * Decode HEVC frame and return loadable RGB data
  * @param hevcData
- * @param rgbData
  */
 RgbData decodeFrame(DataVector hevcData)
 {
@@ -283,7 +281,6 @@ VImage getImage(HevcImageFileReader& reader, uint32_t contextId, uint32_t gridIt
     uint32_t firstTileId = tileItemIds.at(0);
 
     // Extract and decode all tiles
-
     vector<VImage> tiles;
     vector<future<RgbData>> decoderResults;
 
@@ -313,11 +310,8 @@ VImage getImage(HevcImageFileReader& reader, uint32_t contextId, uint32_t gridIt
     }
 
     // Stitch tiles together
-
     VImage image = VImage::new_memory();
-
     image = image.arrayjoin(tiles, VImage::option()->set("across", (int)columns));
-
     image = image.extract_area(0, 0, width, height);
 
     return image;
@@ -329,7 +323,7 @@ VImage getImage(HevcImageFileReader& reader, uint32_t contextId, uint32_t gridIt
  * @param options
  * @return
  */
-VImage createVipsThumbnail(VImage &img, Opts &options)
+VImage createVipsThumbnail(VImage& img, Opts& options)
 {
     // This is a bit strange, we have to encode the image into a buffer first
     // However, TIFF encoding is quite fast
@@ -343,9 +337,7 @@ VImage createVipsThumbnail(VImage &img, Opts &options)
         thumbnailOptions->set("crop", VIPS_INTERESTING_CENTRE);
 
     // Now load vips thumbnail from that buffer
-    VImage thumb = VImage::thumbnail_buffer(imgBlob, options.width, thumbnailOptions);
-
-    return thumb;
+    return VImage::thumbnail_buffer(imgBlob, options.width, thumbnailOptions);
 }
 
 
@@ -394,10 +386,10 @@ void saveImage(VImage& img, const string& fileName, Opts& options)
  * Main entry point
  * @param inputFilename
  * @param outputFilename
- * @param opt
+ * @param options
  * @return
  */
-int convert(const string& inputFilename, const string& outputFilename, Opts& opt)
+int convert(const string& inputFilename, const string& outputFilename, Opts& options)
 {
     HevcImageFileReader reader;
     reader.initialize(inputFilename);
@@ -413,21 +405,15 @@ int convert(const string& inputFilename, const string& outputFilename, Opts& opt
 
     chrono::steady_clock::time_point begin_encode = chrono::steady_clock::now();
 
-    bool useEmbeddedThumbnail = false;
-    bool createOutputThumbnail = opt.width > 0;
+    bool useEmbeddedThumbnail = options.thumbnail;
+    bool createOutputThumbnail = options.width > 0;
 
     // Detect if we safely can use the embedded thumbnail to create output thumbnail
     if (createOutputThumbnail) {
 
-        if (opt.width <= 240 && opt.height <= 240) {
+        if (options.width <= 240 && options.height <= 240) {
             useEmbeddedThumbnail = true;
         }
-    }
-
-    // If -t option is given in arguments, always use embedded thumbnail
-    if (opt.thumbnail)
-    {
-        useEmbeddedThumbnail = true;
     }
 
     // Get the actual image content from file
@@ -435,7 +421,7 @@ int convert(const string& inputFilename, const string& outputFilename, Opts& opt
     if (useEmbeddedThumbnail) {
         image = getThumbnailImage(reader, contextId, gridItemId);
     } else {
-        image = getImage(reader, contextId, gridItemId, opt.parallel);
+        image = getImage(reader, contextId, gridItemId, options.parallel);
     }
 
     chrono::steady_clock::time_point end_encode = chrono::steady_clock::now();
@@ -456,10 +442,10 @@ int convert(const string& inputFilename, const string& outputFilename, Opts& opt
 
     if (createOutputThumbnail)
     {
-        image = createVipsThumbnail(image, opt);
+        image = createVipsThumbnail(image, options);
     }
 
-    saveImage(image, outputFilename, opt);
+    saveImage(image, outputFilename, options);
 
     vips_shutdown();
 
@@ -467,7 +453,7 @@ int convert(const string& inputFilename, const string& outputFilename, Opts& opt
 }
 
 
-Opts getTifigOptions(cxxopts::Options &options)
+Opts getTifigOptions(cxxopts::Options& options)
 {
     Opts opts = {};
 
@@ -504,16 +490,16 @@ int main(int argc, char* argv[])
         options.parse_positional(vector<string>{"input", "output"});
 
         options.add_options()
-                ("i,input", "Input HEIF image", cxxopts::value<string>())
-                ("o,output", "Output image path", cxxopts::value<string>())
-                ("q,quality", "Output JPEG quality", cxxopts::value<int>()
+                ("i, input", "Input HEIF image", cxxopts::value<string>())
+                ("o, output", "Output image path", cxxopts::value<string>())
+                ("q, quality", "Output JPEG quality", cxxopts::value<int>()
                         ->default_value("90")->implicit_value("90"))
-                ("v,verbose", "Verbose output", cxxopts::value<bool>(VERBOSE))
+                ("v, verbose", "Verbose output", cxxopts::value<bool>(VERBOSE))
                 ("w, width", "Width of output image", cxxopts::value<int>())
                 ("h, height", "Height of output image", cxxopts::value<int>())
                 ("c, crop", "Smartcrop image to fit given size", cxxopts::value<bool>())
-                ("p,parallel", "Decode tiles in parallel", cxxopts::value<bool>())
-                ("t,thumbnail", "Use embedded thumbnail", cxxopts::value<bool>())
+                ("p, parallel", "Decode tiles in parallel", cxxopts::value<bool>())
+                ("t, thumbnail", "Use embedded thumbnail", cxxopts::value<bool>())
                 ;
 
         options.parse(argc, argv);
