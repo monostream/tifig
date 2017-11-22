@@ -8,14 +8,14 @@ Converts HEIF images created on iOS 11 devices as fast as ~~humanly~~ possible
 
 ## Build Dependencies
 
- * `libvips` >= 8.3
+ * `libvips` >= 8.5
  * `libavcodec` >= 3.1
  * `libswscale` >= 3.1
  
-Install the dependencies under a debian based distribution:
+Install the dependencies under a ubuntu based distribution (Should work for xenial, zesty and artful):
 
 ```
-# sudo add-apt-repository -y ppa:teivg/graph
+# sudo add-apt-repository -y ppa:dhor/myway
 # sudo add-apt-repository -y ppa:jonathonf/ffmpeg-3
 # suod apt-get update
 # sudo apt-get install libvips-dev libavcodec-dev libswscale-dev
