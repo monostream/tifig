@@ -473,13 +473,18 @@ Opts getTifigOptions(cxxopts::Options& options)
     return opts;
 }
 
+void printVersion()
+{
+    cout << "tifig 0.1.0" << endl;
+}
+
 
 int main(int argc, char* argv[])
 {
     // Disable colr and pixi boxes unknown warnings from libheif
     Log::getWarningInstance().setLevel(Log::LogLevel::ERROR);
 
-    int retval = -1;
+    int retval = 1;
 
     try {
 
@@ -500,11 +505,15 @@ int main(int argc, char* argv[])
                 ("c, crop", "Smartcrop image to fit given size", cxxopts::value<bool>())
                 ("p, parallel", "Decode tiles in parallel", cxxopts::value<bool>())
                 ("t, thumbnail", "Use embedded thumbnail", cxxopts::value<bool>())
+                ("version", "Show tifig version ")
                 ;
 
         options.parse(argc, argv);
 
-        if (options.count("input") && options.count("output")) {
+        if (options.count("version")) {
+            printVersion();
+            retval = 0;
+        } else if (options.count("input") && options.count("output")) {
             string inputFileName = options["input"].as<string>();
             string outputFileName = options["output"].as<string>();
 
@@ -523,8 +532,6 @@ int main(int argc, char* argv[])
         } else {
             cout << options.help() << endl;
         }
-
-
     }
     catch (const cxxopts::OptionException& oe) {
         cout << "error parsing options: " << oe.what() << endl;
