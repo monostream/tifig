@@ -381,6 +381,30 @@ void saveImage(VImage& img, const string& fileName, Opts& options)
     }
 }
 
+/**
+ * Sanity check: When you edit a HEIC image on iOS 11 it's saved as JPEG instead of HEIC but still has .heic ending.
+ * Starting tifig on such a file, nokia's heif library goes into an endless loop.
+ * So check if the file starts with an 'ftyp' box.
+ * @param inputFilename
+ */
+void sanityCheck(const string& inputFilename)
+{
+    ifstream input(inputFilename);
+    if (!input.is_open()) {
+        throw logic_error("Could not open file " + inputFilename);
+    }
+
+    char* bytes = new char[8];
+    input.read(bytes, 8);
+
+    if (bytes[4] != 'f' &&
+        bytes[5] != 't' &&
+        bytes[6] != 'y' &&
+        bytes[7] != 'p')
+    {
+        throw logic_error("Not ftyp box found! This cannot be a HEIF image.");
+    }
+}
 
 /**
  * Main entry point
@@ -391,6 +415,8 @@ void saveImage(VImage& img, const string& fileName, Opts& options)
  */
 int convert(const string& inputFilename, const string& outputFilename, Opts& options)
 {
+    sanityCheck(inputFilename);
+
     HevcImageFileReader reader;
     reader.initialize(inputFilename);
     const uint32_t contextId = reader.getFileProperties().rootLevelMetaBoxProperties.contextId;
