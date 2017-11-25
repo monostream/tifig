@@ -36,6 +36,12 @@ struct RgbData
     int height = 0;
 };
 
+struct ExifData
+{
+    uint8_t* data = nullptr;
+    uint32_t size = 0;
+};
+
 struct Opts
 {
     int width = 0;
@@ -188,13 +194,35 @@ RgbData decodeFrame(DataVector hevcData)
 }
 
 /**
+ * Search for offset where Exif data starts
+ * @param exifData
+ * @return
+ */
+int findExifHeaderOffset(DataVector &exifData)
+{
+    string exifPattern = "Exif";
+    int exifOffset = -1;
+    for (uint64_t i = 0; i < exifData.size() - 4; i++) {
+        if (exifData[i+0] == exifPattern[0] &&
+            exifData[i+1] == exifPattern[1] &&
+            exifData[i+2] == exifPattern[2] &&
+            exifData[i+3] == exifPattern[3]) {
+            exifOffset = static_cast<int>(i);
+            break;
+        }
+    }
+
+    return exifOffset;
+}
+
+/**
  * Extract EXIF data from HEIF
  * @param reader
  * @param contextId
  * @param itemId
  * @return
  */
-easyexif::EXIFInfo extractExifData(HevcImageFileReader* reader, uint32_t contextId, uint32_t itemId)
+ExifData extractExifData(HevcImageFileReader* reader, uint32_t contextId, uint32_t itemId)
 {
     IdVector exifItemIds;
     DataVector exifData;
@@ -211,13 +239,28 @@ easyexif::EXIFInfo extractExifData(HevcImageFileReader* reader, uint32_t context
         throw logic_error("Exif data is empty");
     }
 
+    int exifOffset = findExifHeaderOffset(exifData);
+    if (exifOffset == -1) {
+        throw logic_error("Exif data not found");
+    }
+
+    ExifData result = {};
+    result.data = &exifData[exifOffset];
+    result.size = static_cast<uint32_t>(exifData.size() - exifOffset);
+
+    return result;
+}
+
+/**
+ * Parse exif data
+ * @param exifData
+ * @return
+ */
+easyexif::EXIFInfo parseExifData(ExifData& exifData)
+{
     easyexif::EXIFInfo exifInfo;
 
-    const int exifOffset = 4; // TODO: Derive this from data!
-    uint8_t* exifDataPtr = &exifData[exifOffset];
-    uint32_t exifDataLength = static_cast<uint32_t>(exifData.size() - exifOffset);
-
-    int parseRet = exifInfo.parseFromEXIFSegment(exifDataPtr, exifDataLength);
+    int parseRet = exifInfo.parseFromEXIFSegment(exifData.data, exifData.size);
 
     if (parseRet != 0) {
         throw logic_error("Failed to parse EXIF data!");
@@ -459,7 +502,8 @@ int convert(const string& inputFilename, const string& outputFilename, Opts& opt
 
     try {
         // Extract EXIF data;
-        easyexif::EXIFInfo exifInfo = extractExifData(&reader, contextId, gridItemId);
+        ExifData exifData = extractExifData(&reader, contextId, gridItemId);
+        easyexif::EXIFInfo exifInfo = parseExifData(exifData);
         image.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
     }
     catch (const logic_error& le) {
