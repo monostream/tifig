@@ -48,6 +48,11 @@ endif()
 
 set(LIBHEIF_DIR ${PROJECT_SOURCE_DIR}/lib/heif)
 set(SOURCE_FILES
+        src/heif.hpp
+        src/hevc_decode.hpp
+        src/imaging.hpp
+        src/loader.hpp
+        src/types.hpp
         src/main.cpp
         src/vips-exif.c)
 set(TIFIG tifig)
