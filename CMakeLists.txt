@@ -18,8 +18,6 @@ option(STATIC_BUILD "Build tifig static")
 if (STATIC_BUILD)
     # Strip static build
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -s")
-    set(BUILD_SHARED_LIBS OFF)
-    set(BUILD_STATIC_LIBS ON)
 endif()
 
 find_package(PkgConfig)
@@ -30,15 +28,23 @@ pkg_check_modules(SWSCALE libswscale REQUIRED)
 pkg_check_modules(EXIF libexif REQUIRED)
 pkg_check_modules(VIPS vips-cpp REQUIRED)
 
-set(TIFIG_INCLUDE_DIRS "${AVCODEC_INCLUDE_DIRS} ${AVUTIL_INCLUDE_DIRS} ${SWSCALE_INCLUDE_DIRS} ${EXIF_INCLUDE_DIRS} ${VIPS_INCLUDE_DIRS}")
-
 if (STATIC_BUILD)
     pkg_check_modules(EXPAT expat REQUIRED)
-    set(TIFIG_LDFLAGS "${AVCODEC_STATIC_LDFLAGS} ${AVUTIL_STATIC_LDFLAGS} ${SWSCALE_STATIC_LDFLAGS} ${EXIF_STATIC_LDFLAGS} ${VIPS_STATIC_LDFLAGS} ${EXPAT_STATIC_LDFLAGS}")
+    set(TIFIG_LDFLAGS
+            ${AVCODEC_STATIC_LDFLAGS}
+            ${AVUTIL_STATIC_LDFLAGS}
+            ${SWSCALE_STATIC_LDFLAGS}
+            ${EXIF_STATIC_LDFLAGS}
+            ${VIPS_STATIC_LDFLAGS}
+            ${EXPAT_STATIC_LDFLAGS})
 else()
-    set(TIFIG_LDFLAGS "${AVCODEC_LDFLAGS} ${AVUTIL_LDFLAGS} ${SWSCALE_LDFLAGS} ${EXIF_LDFLAGS} ${VIPS_LDFLAGS}")
+    set(TIFIG_LDFLAGS
+            ${AVCODEC_LDFLAGS}
+            ${AVUTIL_LDFLAGS}
+            ${SWSCALE_LDFLAGS}
+            ${EXIF_LDFLAGS}
+            ${VIPS_LDFLAGS})
 endif()
-
 
 set(LIBHEIF_DIR ${PROJECT_SOURCE_DIR}/lib/heif)
 set(SOURCE_FILES
@@ -55,7 +61,11 @@ include_directories(${LIBHEIF_DIR}/Srcs/common)
 include_directories(${LIBHEIF_DIR}/Srcs/reader)
 include_directories(lib/cxxopts/include)
 
-include_directories(${TIFIG_INCLUDE_DIRS})
+include_directories(${AVCODEC_INCLUDE_DIRS})
+include_directories(${AVUTIL_INCLUDE_DIRS})
+include_directories(${SWSCALE_INCLUDE_DIRS})
+include_directories(${EXIF_INCLUDE_DIRS})
+include_directories(${VIPS_INCLUDE_DIRS})
 
 target_link_libraries(${TIFIG} heifreader cxxopts pthread)
 target_link_libraries(${TIFIG} ${TIFIG_LDFLAGS})
