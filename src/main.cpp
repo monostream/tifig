@@ -57,7 +57,11 @@ IdVector findGridItems(const HevcImageFileReader* reader, uint32_t contextId)
     reader->getItemListByType(contextId, "grid", gridItemIds);
 
     if (gridItemIds.empty()) {
-        throw logic_error("No grid items founds!");
+        throw logic_error(
+            "Grid configuration not found! tifig currently only supports .heic images created on iOS 11 devices.\n"
+            "If you are certain this image was created on iOS 11, please open an issue here:\n\n"
+            "https://github.com/monostream/tifig/issues/new"
+        );
     }
 
     return gridItemIds;
@@ -439,7 +443,7 @@ void sanityCheck(const string& inputFilename)
         bytes[6] != 'y' &&
         bytes[7] != 'p')
     {
-        throw logic_error("Not ftyp box found! This cannot be a HEIF image.");
+        throw logic_error("No ftyp box found! This cannot be a HEIF image.");
     }
 }
 
