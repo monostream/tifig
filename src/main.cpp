@@ -5,6 +5,7 @@
 #include <thread>
 #include <future>
 #include <vips/vips8>
+#include <exif-utils.h>
 
 extern "C" {
     #include <libavutil/opt.h>
@@ -264,6 +265,63 @@ ExifData* exifLoadDataWithoutFix(const uint8_t *data, const uint32_t length)
     return ed;
 }
 
+struct ExifParams
+{
+    VImage* image;
+    ExifByteOrder byteOrder;
+};
+
+void exif_attach_entry(ExifEntry *entry, ExifParams* params)
+{
+    const char* name = exif_tag_get_name(entry->tag);
+    int ifd = exif_entry_get_ifd(entry);
+
+    u_char* data = entry->data;
+    VImage* image = params->image;
+    ExifByteOrder bo = params->byteOrder;
+
+    string keyName = "exif-ifd" + to_string(ifd) + "-" + name;\
+    string value;
+
+    if (entry->format == EXIF_FORMAT_ASCII) {
+        char txt[256];
+        uint32_t len = min((uint32_t)254, entry->size);
+        memcpy(txt, data, len);
+        txt[len] = '\0';
+        value = txt;
+    } else if (entry->format == EXIF_FORMAT_SHORT) {
+        uint32_t v = exif_get_short(data, bo);
+        value = to_string(v);
+    } else if (entry->format == EXIF_FORMAT_SSHORT) {
+        int32_t v = exif_get_sshort(data, bo);
+        value = to_string(v);
+    } else if (entry->format == EXIF_FORMAT_LONG) {
+        int64_t v = exif_get_long(data, bo);
+        value = to_string(v);
+    } else if (entry->format == EXIF_FORMAT_SLONG) {
+        int64_t v = exif_get_slong(data, bo);
+        value = to_string(v);
+    } else if (entry->format == EXIF_FORMAT_RATIONAL || entry->format == EXIF_FORMAT_SRATIONAL) {
+        ExifRational v = exif_get_rational(data, bo);
+        value = to_string(v.numerator) + "/" + to_string(v.denominator);
+    } else if (entry->format == EXIF_FORMAT_BYTE) {
+        char v[256];
+        exif_entry_get_value(entry, v, 255);
+        value = v;
+    } else {
+        return;
+    }
+
+    cout << keyName << " : " << value << endl;
+
+    params->image->set(keyName.c_str(), value.c_str());
+}
+
+void exif_get_content(ExifContent* content, ExifParams* params)
+{
+    exif_content_foreach_entry(content, (ExifContentForeachEntryFunc) exif_attach_entry, params);
+}
+
 /**
  * Parse exif data
  * @param exifData
@@ -279,6 +337,12 @@ void parseAndAppendExif(DataVector& exifData, VImage& image)
     if (!ed) {
         throw logic_error("Failed to parse exif data");
     }
+
+    ExifParams params = {};
+    params.image = &image;
+    params.byteOrder = exif_data_get_byte_order(ed);
+
+    exif_data_foreach_content(ed, (ExifDataForeachContentFunc)exif_get_content, &params);
 
     ExifByteOrder byteOrder = exif_data_get_byte_order(ed);
     ExifEntry *exifEntry = exif_data_get_entry(ed, EXIF_TAG_ORIENTATION);
