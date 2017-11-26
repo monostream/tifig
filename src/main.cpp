@@ -1,9 +1,7 @@
 #include <chrono>
 #include <cxxopts.hpp>
-#include <exif.h>
 #include <hevcimagefilereader.hpp>
 #include <log.hpp>
-#include <thread>
 #include <future>
 #include <vips/vips8>
 
@@ -12,6 +10,7 @@ extern "C" {
     #include <libavutil/imgutils.h>
     #include <libavcodec/avcodec.h>
     #include <libswscale/swscale.h>
+    #include "vips-exif.h"
 };
 
 using namespace std;
@@ -34,12 +33,6 @@ struct RgbData
     size_t size = 0;
     int width = 0;
     int height = 0;
-};
-
-struct ExifData
-{
-    uint8_t* data = nullptr;
-    uint32_t size = 0;
 };
 
 struct Opts
@@ -222,7 +215,7 @@ int findExifHeaderOffset(DataVector &exifData)
  * @param itemId
  * @return
  */
-ExifData extractExifData(HevcImageFileReader* reader, uint32_t contextId, uint32_t itemId)
+DataVector extractExifData(HevcImageFileReader* reader, uint32_t contextId, uint32_t itemId)
 {
     IdVector exifItemIds;
     DataVector exifData;
@@ -244,29 +237,30 @@ ExifData extractExifData(HevcImageFileReader* reader, uint32_t contextId, uint32
         throw logic_error("Exif data not found");
     }
 
-    ExifData result = {};
-    result.data = &exifData[exifOffset];
-    result.size = static_cast<uint32_t>(exifData.size() - exifOffset);
-
+    DataVector result;
+    uint64_t skipBytes = static_cast<uint64_t>(exifOffset);
+    result.insert(result.begin(),  exifData.begin() + skipBytes, exifData.end() - exifOffset);
     return result;
 }
 
+
 /**
- * Parse exif data
+ * Parse exif data and set image fields
  * @param exifData
  * @return
  */
-easyexif::EXIFInfo parseExifData(ExifData& exifData)
+void parseExif(DataVector &exifData, VImage &image)
 {
-    easyexif::EXIFInfo exifInfo;
+    uint8_t* exifDataPtr = &exifData[0];
+    uint32_t exifDataLength = static_cast<uint32_t>(exifData.size());
 
-    int parseRet = exifInfo.parseFromEXIFSegment(exifData.data, exifData.size);
+    image.set(VIPS_META_EXIF_NAME, nullptr, exifDataPtr, exifDataLength);
 
-    if (parseRet != 0) {
-        throw logic_error("Failed to parse EXIF data!");
+    int parseResult = vips_exif_parse(image.get_image());
+
+    if (parseResult != 0) {
+        throw logic_error("Failed to parse Exif data");
     }
-
-    return exifInfo;
 }
 
 
@@ -500,15 +494,8 @@ int convert(const string& inputFilename, const string& outputFilename, Opts& opt
         cout << "Export & decode HEVC: " << tileEncodeTime << "ms" << endl;
     }
 
-    try {
-        // Extract EXIF data;
-        ExifData exifData = extractExifData(&reader, contextId, gridItemId);
-        easyexif::EXIFInfo exifInfo = parseExifData(exifData);
-        image.set(VIPS_META_ORIENTATION, exifInfo.Orientation);
-    }
-    catch (const logic_error& le) {
-        cerr << "Failed to set EXIF orientation: " << le.what() << endl;
-    }
+    DataVector exifData = extractExifData(&reader, contextId, gridItemId);
+    parseExif(exifData, image);
 
     if (createOutputThumbnail)
     {
