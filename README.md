@@ -11,6 +11,7 @@ Converts HEIF images created on iOS 11 devices as fast as ~~humanly~~ possible
  * `libvips` >= 8.5
  * `libavcodec` >= 3.1
  * `libswscale` >= 3.1
+ * `libexif` >= 0.6.14
  
 Install the dependencies under a ubuntu based distribution (Should work for xenial, zesty and artful):
 
@@ -57,18 +58,18 @@ Total Time 5ms
 
   * ~~Testing~~ 
   * ~~Create independant static binary~~
-  * Keep exif metadata in coverted images
-  * Cleanup and optimizing 
+  * ~~Keep exif metadata in coverted images~~
+  * Cleanup and optimizing
+  * Replace Nokia library with ISOBMFF parser
   
 ## Software Used / Libraries
 
   * HEIF by Nokia Technologies https://github.com/nokiatech/heif
   * libvips https://github.com/jcupitt/libvips
-  * libav http://www.libav.org
-  * easyexif https://github.com/mayanklahiri/easyexif
+  * ffmpeg https://www.ffmpeg.org/
   * cxxopts https://github.com/jarro2783/cxxopts
   
-***Suggestions for improvements and Pull Requests highly welcome***
+***Suggestions for improvements and Pull Requests highly welcome!***
  
 
 
