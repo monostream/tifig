@@ -50,7 +50,8 @@
 #include <vips/vips.h>
 #include <vips/debug.h>
 
-#include <exif-data.h>
+#include <libexif/exif-data.h>
+
 
 /* Like exif_data_new_from_data(), but don't default missing fields.
  *
