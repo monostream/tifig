@@ -5,6 +5,8 @@
 #include <future>
 #include <vips/vips8>
 
+#include "version.h"
+
 extern "C" {
     #include <libavutil/opt.h>
     #include <libavutil/imgutils.h>
@@ -536,9 +538,8 @@ Opts getTifigOptions(cxxopts::Options& options)
 
 void printVersion()
 {
-    cout << "tifig 0.1.0" << endl;
+    cout << "tifig " << VERSION << endl;
 }
-
 
 int main(int argc, char* argv[])
 {
