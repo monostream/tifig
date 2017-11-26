@@ -11,6 +11,7 @@ build_dir = '../build'
 tifig_bin = os.path.join(build_dir, 'tifig')
 fixtures_dir = '../fixtures'
 references_dir = 'iOS11_ref_exports'
+negatives_dir = 'negative_tests'
 
 ssim_min_value = 0.90
 
@@ -38,7 +39,7 @@ def build_tifig():
 
     os.chdir(test_dir)
 
-def get_test_candidates():
+def get_similarity_test_candidates():
     fixtures = sorted(os.listdir(fixtures_dir))
     references = sorted(os.listdir(references_dir))
 
@@ -49,7 +50,7 @@ def get_test_candidates():
 
 
 def run_similarity_test():
-    for heic, ref, converted in get_test_candidates():
+    for heic, ref, converted in get_similarity_test_candidates():
         print('> Converting %s => %s' % (os.path.basename(heic), converted), color='yellow')
         tifig_ret = run('%s -v %s %s' % (tifig_bin, heic, converted))
         if (tifig_ret != 0):
@@ -74,6 +75,18 @@ def run_similarity_test():
 
         print()
 
+def run_negative_test():
+    outName = 'out.jpg'
+    for f in sorted(os.listdir(negatives_dir)):
+        path = os.path.join(negatives_dir, f)
+        print('> Converting %s => %s' % (f, outName), color='yellow')
+        tifig_ret = run('%s -v %s %s' % (tifig_bin, path, outName))
+
+        # We expect this to fail
+        if tifig_ret == 0:
+            print('Converting %s should not have worked! Something is fishy here.' % img, color='red')
+            exit(1)
+
 
 if __name__ == "__main__":
     print()
@@ -87,4 +100,5 @@ if __name__ == "__main__":
 
     build_tifig()
     print()
+    run_negative_test()
     run_similarity_test()
