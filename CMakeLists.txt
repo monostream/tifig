@@ -41,7 +41,9 @@ endif()
 
 
 set(LIBHEIF_DIR ${PROJECT_SOURCE_DIR}/lib/heif)
-set(SOURCE_FILES src/main.cpp)
+set(SOURCE_FILES
+        src/main.cpp
+        src/vips-exif.c)
 set(TIFIG tifig)
 
 add_subdirectory(${LIBHEIF_DIR})

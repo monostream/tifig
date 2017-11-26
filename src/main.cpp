@@ -2,17 +2,15 @@
 #include <cxxopts.hpp>
 #include <hevcimagefilereader.hpp>
 #include <log.hpp>
-#include <thread>
 #include <future>
 #include <vips/vips8>
-#include <exif-utils.h>
 
 extern "C" {
     #include <libavutil/opt.h>
     #include <libavutil/imgutils.h>
     #include <libavcodec/avcodec.h>
     #include <libswscale/swscale.h>
-    #include <exif-loader.h>
+    #include "vips-exif.h"
 };
 
 using namespace std;
@@ -245,111 +243,23 @@ DataVector extractExifData(HevcImageFileReader* reader, uint32_t contextId, uint
     return result;
 }
 
-/**
- * libexif data loader without setting default values, blatantly stolen from vips
- * @param data
- * @param length
- * @return
- */
-ExifData* exifLoadDataWithoutFix(const uint8_t *data, const uint32_t length)
-{
-    ExifData *ed;
-
-    if(!(ed = exif_data_new())) {
-        throw logic_error("could not allocate exif data");
-    }
-
-    exif_data_unset_option(ed, EXIF_DATA_OPTION_FOLLOW_SPECIFICATION);
-    exif_data_load_data(ed, data, length);
-
-    return ed;
-}
-
-struct ExifParams
-{
-    VImage* image;
-    ExifByteOrder byteOrder;
-};
-
-void exif_attach_entry(ExifEntry *entry, ExifParams* params)
-{
-    const char* name = exif_tag_get_name(entry->tag);
-    int ifd = exif_entry_get_ifd(entry);
-
-    u_char* data = entry->data;
-    VImage* image = params->image;
-    ExifByteOrder bo = params->byteOrder;
-
-    string keyName = "exif-ifd" + to_string(ifd) + "-" + name;\
-    string value;
-
-    if (entry->format == EXIF_FORMAT_ASCII) {
-        char txt[256];
-        uint32_t len = min((uint32_t)254, entry->size);
-        memcpy(txt, data, len);
-        txt[len] = '\0';
-        value = txt;
-    } else if (entry->format == EXIF_FORMAT_SHORT) {
-        uint32_t v = exif_get_short(data, bo);
-        value = to_string(v);
-    } else if (entry->format == EXIF_FORMAT_SSHORT) {
-        int32_t v = exif_get_sshort(data, bo);
-        value = to_string(v);
-    } else if (entry->format == EXIF_FORMAT_LONG) {
-        int64_t v = exif_get_long(data, bo);
-        value = to_string(v);
-    } else if (entry->format == EXIF_FORMAT_SLONG) {
-        int64_t v = exif_get_slong(data, bo);
-        value = to_string(v);
-    } else if (entry->format == EXIF_FORMAT_RATIONAL || entry->format == EXIF_FORMAT_SRATIONAL) {
-        ExifRational v = exif_get_rational(data, bo);
-        value = to_string(v.numerator) + "/" + to_string(v.denominator);
-    } else if (entry->format == EXIF_FORMAT_BYTE) {
-        char v[256];
-        exif_entry_get_value(entry, v, 255);
-        value = v;
-    } else {
-        return;
-    }
-
-    cout << keyName << " : " << value << endl;
-
-    params->image->set(keyName.c_str(), value.c_str());
-}
-
-void exif_get_content(ExifContent* content, ExifParams* params)
-{
-    exif_content_foreach_entry(content, (ExifContentForeachEntryFunc) exif_attach_entry, params);
-}
 
 /**
- * Parse exif data
+ * Parse exif data and set image fields
  * @param exifData
  * @return
  */
-void parseAndAppendExif(DataVector& exifData, VImage& image)
+void parseExif(DataVector &exifData, VImage &image)
 {
     uint8_t* exifDataPtr = &exifData[0];
     uint32_t exifDataLength = static_cast<uint32_t>(exifData.size());
 
-    ExifData* ed = exifLoadDataWithoutFix(exifDataPtr, exifDataLength);
+    image.set(VIPS_META_EXIF_NAME, nullptr, exifDataPtr, exifDataLength);
 
-    if (!ed) {
-        throw logic_error("Failed to parse exif data");
-    }
+    int parseResult = vips_exif_parse(image.get_image());
 
-    ExifParams params = {};
-    params.image = &image;
-    params.byteOrder = exif_data_get_byte_order(ed);
-
-    exif_data_foreach_content(ed, (ExifDataForeachContentFunc)exif_get_content, &params);
-
-    ExifByteOrder byteOrder = exif_data_get_byte_order(ed);
-    ExifEntry *exifEntry = exif_data_get_entry(ed, EXIF_TAG_ORIENTATION);
-
-    if (exifEntry) {;
-        int orientation = exif_get_short(exifEntry->data, byteOrder);
-        image.set(VIPS_META_ORIENTATION, orientation);
+    if (parseResult != 0) {
+        throw logic_error("Failed to parse Exif data");
     }
 }
 
@@ -584,13 +494,13 @@ int convert(const string& inputFilename, const string& outputFilename, Opts& opt
         cout << "Export & decode HEVC: " << tileEncodeTime << "ms" << endl;
     }
 
+    DataVector exifData = extractExifData(&reader, contextId, gridItemId);
+    parseExif(exifData, image);
+
     if (createOutputThumbnail)
     {
         image = createVipsThumbnail(image, options);
     }
-
-    DataVector exifData = extractExifData(&reader, contextId, gridItemId);
-    parseAndAppendExif(exifData, image);
 
     saveImage(image, outputFilename, options);
 
