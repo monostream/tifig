@@ -84,8 +84,10 @@ def run_negative_test():
 
         # We expect this to fail
         if tifig_ret == 0:
-            print('Converting %s should not have worked! Something is fishy here.' % img, color='red')
+            print('Converting %s should not have worked! Something is fishy here.' % f, color='red')
             exit(1)
+
+        print()
 
 
 if __name__ == "__main__":
