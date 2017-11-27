@@ -39,20 +39,37 @@ make
 
 ## Usage
 
+Convert the fullsize picture:
 ```
-# tifig -v -p image.heic output.jpg # get the full picture
+# tifig -v -p image.heic output.jpg
 Grid is 4032x3024 pixels in tiles 8x6
 Export & decode HEVC: 97ms
 Saving image: 55ms
 Total Time: 160ms
 ```
 
+Create a thumbnail with max width of 800px:
 ```
-# tifig -v -t image.heic thumbnail.jpg # get the embedded thumbnail
-Export & decode HEVC: 2ms
-Saving image: 3ms
-Total Time 5ms
+# tifig -v -p --width 800 image.heic thumbnail.jpg 
+Grid is 4032x3024 pixels in tiles 8x6
+Export & decode HEVC: 113ms
+Saving image: 100ms
+Total Time: 243ms
 ```
+
+Create a cropped thumbnail to match size exactly:
+```
+# tifig -v -p --crop --width 400 --height 400 1_portrait.heic thumbnail.jpg
+Grid is 4032x3024 pixels in tiles 8x6
+Export & decode HEVC: 105ms
+Saving image: 125ms
+Total Time: 234ms
+```
+When a size smaller than 240x240 is requested, tifig will automatically use the embedded thumbnail.
+
+## Installing
+
+We release tifig as static binary that should work on any linux without installing dependencies. The only requirement is glibc with a minimal version of 2.14. Just copy the binary to /usr/local/bin or whereve you need it.
 
 ## ToDo's
 
