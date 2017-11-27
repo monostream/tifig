@@ -3,4 +3,4 @@
 
 #define VERSION "0.2.0"
 
-#endif //TIFIG_VERSION
+#endif

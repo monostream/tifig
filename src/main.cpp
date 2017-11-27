@@ -1,428 +1,8 @@
-#include <chrono>
 #include <cxxopts.hpp>
-#include <hevcimagefilereader.hpp>
 #include <log.hpp>
-#include <future>
-#include <vips/vips8>
 
 #include "version.h"
-
-extern "C" {
-    #include <libavutil/opt.h>
-    #include <libavutil/imgutils.h>
-    #include <libavcodec/avcodec.h>
-    #include <libswscale/swscale.h>
-    #include "vips-exif.h"
-};
-
-using namespace std;
-using namespace vips;
-
-typedef ImageFileReaderInterface::DataVector DataVector;
-typedef ImageFileReaderInterface::IdVector IdVector;
-typedef ImageFileReaderInterface::GridItem GridItem;
-typedef ImageFileReaderInterface::FileReaderException FileReaderException;
-
-
-// Global vars
-static bool VERBOSE = false;
-
-static struct SwsContext* swsContext;
-
-struct RgbData
-{
-    uint8_t* data = nullptr;
-    size_t size = 0;
-    int width = 0;
-    int height = 0;
-};
-
-struct Opts
-{
-    int width = 0;
-    int height = 0;
-    int quality = 90;
-    bool crop = false;
-    bool parallel = false;
-    bool thumbnail = false;
-};
-
-/**
- * Check if image has a grid configuration and return the grid id
- * @param reader
- * @param contextId
- * @return
- */
-IdVector findGridItems(const HevcImageFileReader* reader, uint32_t contextId)
-{
-    IdVector gridItemIds;
-    reader->getItemListByType(contextId, "grid", gridItemIds);
-
-    if (gridItemIds.empty()) {
-        throw logic_error(
-            "Grid configuration not found! tifig currently only supports .heic images created on iOS 11 devices.\n"
-            "If you are certain this image was created on iOS 11, please open an issue here:\n\n"
-            "https://github.com/monostream/tifig/issues/new"
-        );
-    }
-
-    return gridItemIds;
-}
-
-/**
- * Find thmb reference in metabox
- * @param reader
- * @param contextId
- * @param itemId
- * @return
- */
-uint32_t findThumbnailId(const HevcImageFileReader* reader, uint32_t contextId, uint32_t itemId)
-{
-    IdVector thmbIds;
-    reader->getReferencedToItemListByType(contextId, itemId, "thmb", thmbIds);
-
-    if (thmbIds.empty()) {
-        throw logic_error("Thumbnail ID not found!");
-    }
-
-    return thmbIds.at(0);
-}
-
-/**
- * Convert colorspace of decoded frame load into buffer
- * @param frame
- * @param dst
- * @param dst_size
- * @return the number of bytes written to dst, or a negative value on error
- */
-int copyFrameInto(AVFrame* frame, uint8_t* dst, size_t dst_size)
-{
-    AVFrame* imgFrame = av_frame_alloc();
-    int width = frame->width;
-    int height = frame->height;
-
-    uint8_t *tempBuffer = (uint8_t*) av_malloc(dst_size);
-
-    struct SwsContext *sws_ctx = sws_getCachedContext(swsContext,
-                                                      width, height, AV_PIX_FMT_YUV420P,
-                                                      width, height, AV_PIX_FMT_RGB24,
-                                                      0, nullptr, nullptr, nullptr);
-
-    av_image_fill_arrays(imgFrame->data, imgFrame->linesize, tempBuffer, AV_PIX_FMT_RGB24, width, height, 1);
-    uint8_t const* const* frameDataPtr = (uint8_t const* const*)frame->data;
-
-    // Convert YUV to RGB
-    sws_scale(sws_ctx, frameDataPtr, frame->linesize, 0, height, imgFrame->data, imgFrame->linesize);
-
-    // Move RGB data in pixel order into memory
-    const uint8_t* const* dataPtr = static_cast<const uint8_t* const*>(imgFrame->data);
-    int size = static_cast<int>(dst_size);
-    int ret = av_image_copy_to_buffer(dst, size, dataPtr, imgFrame->linesize, AV_PIX_FMT_RGB24, width, height, 1);
-
-    av_free(imgFrame);
-    av_free(tempBuffer);
-
-    return ret;
-}
-
-/**
- * Get libav HEVC decoder
- * @return
- */
-AVCodecContext* getHEVCDecoderContext()
-{
-    AVCodec *codec = avcodec_find_decoder(AV_CODEC_ID_HEVC);
-    AVCodecContext *c = avcodec_alloc_context3(codec);
-
-    if (!c) {
-        throw logic_error("Could not allocate video codec context");
-    }
-
-    if (avcodec_open2(c, c->codec, nullptr) < 0) {
-        throw logic_error("Could not open codec");
-    }
-
-    return c;
-}
-
-/**
- * Decode HEVC frame and return loadable RGB data
- * @param hevcData
- */
-RgbData decodeFrame(DataVector hevcData)
-{
-    AVCodecContext* c = getHEVCDecoderContext();
-    AVFrame* frame = av_frame_alloc();
-
-    AVPacket* packet = av_packet_alloc();
-    packet->size = static_cast<int>(hevcData.size());
-    packet->data = &hevcData[0];
-
-    char* errorDescription = new char[256];
-
-    int sent = avcodec_send_packet(c, packet);
-    if (sent < 0)
-    {
-        av_strerror(sent, errorDescription, 256);
-        cerr << "Error sending packet to HEVC decoder: " << errorDescription << endl;
-        throw sent;
-    }
-
-    int success = avcodec_receive_frame(c, frame);
-    if (success != 0) {
-        av_strerror(success, errorDescription, 256);
-        cerr << "Error decoding frame: " << errorDescription << endl;
-        throw success;
-    }
-
-    size_t bufferSize = static_cast<size_t>(av_image_get_buffer_size(AV_PIX_FMT_RGB24, frame->width, frame->height, 1));
-
-    RgbData result = {};
-    result.data = (uint8_t *) malloc(bufferSize);
-    result.size = bufferSize;
-    result.width = frame->width;
-    result.height = frame->height;
-
-    copyFrameInto(frame, result.data, result.size);
-
-    avcodec_close(c);
-    av_free(c);
-    av_free(frame);
-
-    return result;
-}
-
-/**
- * Search for offset where Exif data starts
- * @param exifData
- * @return
- */
-int findExifHeaderOffset(DataVector &exifData)
-{
-    string exifPattern = "Exif";
-    int exifOffset = -1;
-    for (uint64_t i = 0; i < exifData.size() - 4; i++) {
-        if (exifData[i+0] == exifPattern[0] &&
-            exifData[i+1] == exifPattern[1] &&
-            exifData[i+2] == exifPattern[2] &&
-            exifData[i+3] == exifPattern[3]) {
-            exifOffset = static_cast<int>(i);
-            break;
-        }
-    }
-
-    return exifOffset;
-}
-
-/**
- * Extract EXIF data from HEIF
- * @param reader
- * @param contextId
- * @param itemId
- * @return
- */
-DataVector extractExifData(HevcImageFileReader* reader, uint32_t contextId, uint32_t itemId)
-{
-    IdVector exifItemIds;
-    DataVector exifData;
-
-    reader->getReferencedToItemListByType(contextId, itemId, "cdsc", exifItemIds);
-
-    if (exifItemIds.empty()) {
-        throw logic_error("Exif Data ID (cdsc) not found!");
-    }
-
-    reader->getItemData(contextId, exifItemIds.at(0), exifData);
-
-    if (exifData.empty()) {
-        throw logic_error("Exif data is empty");
-    }
-
-    int exifOffset = findExifHeaderOffset(exifData);
-    if (exifOffset == -1) {
-        throw logic_error("Exif data not found");
-    }
-
-    DataVector result;
-    uint64_t skipBytes = static_cast<uint64_t>(exifOffset);
-    result.insert(result.begin(),  exifData.begin() + skipBytes, exifData.end() - exifOffset);
-    return result;
-}
-
-
-/**
- * Parse exif data and set image fields
- * @param exifData
- * @return
- */
-void parseExif(DataVector &exifData, VImage &image)
-{
-    uint8_t* exifDataPtr = &exifData[0];
-    uint32_t exifDataLength = static_cast<uint32_t>(exifData.size());
-
-    image.set(VIPS_META_EXIF_NAME, nullptr, exifDataPtr, exifDataLength);
-
-    int parseResult = vips_exif_parse(image.get_image());
-
-    if (parseResult != 0) {
-        throw logic_error("Failed to parse Exif data");
-    }
-}
-
-
-/**
- * Get thumbnail from HEIC image
- * @param reader
- * @param contextId
- * @param gridItemId
- * @return
- */
-VImage getThumbnailImage(HevcImageFileReader& reader, uint32_t contextId, uint32_t gridItemId)
-{
-    // Find Thumbnail ID
-    const uint32_t thmbId = findThumbnailId(&reader, contextId, gridItemId);
-
-    // Get thumbnail HEVC data
-    DataVector hevcData;
-    reader.getItemDataWithDecoderParameters(contextId, thmbId, hevcData);
-
-    RgbData rgb = decodeFrame(hevcData);
-
-    // Load image into vips and save as JPEG
-    VImage thumbImg = VImage::new_from_memory(rgb.data, rgb.size, rgb.width, rgb.height, 3, VIPS_FORMAT_UCHAR);
-
-    return thumbImg;
-}
-
-
-/**
- * Build image from HEIC grid item
- * @param reader
- * @param contextId
- * @param gridItemId
- * @return
- */
-VImage getImage(HevcImageFileReader& reader, uint32_t contextId, uint32_t gridItemId, bool parallel = false)
-{
-    GridItem gridItem;
-    gridItem = reader.getItemGrid(contextId, gridItemId);
-
-    // Convenience vars
-    uint32_t width = gridItem.outputWidth;
-    uint32_t height = gridItem.outputHeight;
-    uint32_t columns = gridItem.columnsMinusOne + 1;
-    uint32_t rows = gridItem.rowsMinusOne + 1;
-
-    if (VERBOSE) {
-        cout << "Grid is " << width << "x" << height << " pixels in tiles " << columns << "x" << rows << endl;
-    }
-
-    // Find master tiles to extract
-    IdVector tileItemIds;
-    reader.getItemListByType(contextId, "master", tileItemIds);
-
-    uint32_t firstTileId = tileItemIds.at(0);
-
-    // Extract and decode all tiles
-    vector<VImage> tiles;
-    vector<future<RgbData>> decoderResults;
-
-    for (uint32_t tileItemId : tileItemIds) {
-        DataVector hevcData;
-        reader.getItemDataWithDecoderParameters(contextId, tileItemId, firstTileId, hevcData);
-
-        if (parallel) {
-            decoderResults.push_back(async(decodeFrame, hevcData));
-        } else {
-            RgbData rgb = decodeFrame(hevcData);
-
-            VImage img = VImage::new_from_memory(rgb.data, rgb.size, rgb.width, rgb.height, 3, VIPS_FORMAT_UCHAR);
-
-            tiles.push_back(img);
-        }
-    }
-
-    if (parallel) {
-        for (future<RgbData> &futureData: decoderResults) {
-            RgbData rgb = futureData.get();
-
-            VImage img = VImage::new_from_memory(rgb.data, rgb.size, rgb.width, rgb.height, 3, VIPS_FORMAT_UCHAR);
-
-            tiles.push_back(img);
-        }
-    }
-
-    // Stitch tiles together
-    VImage image = VImage::new_memory();
-    image = image.arrayjoin(tiles, VImage::option()->set("across", (int)columns));
-    image = image.extract_area(0, 0, width, height);
-
-    return image;
-}
-
-/**
- * Resize the output image using vips thumbnail logic
- * @param img
- * @param options
- * @return
- */
-VImage createVipsThumbnail(VImage& img, Opts& options)
-{
-    // This is a bit strange, we have to encode the image into a buffer first
-    // However, TIFF encoding is quite fast
-    VipsBlob* imgBlob = img.autorot().tiffsave_buffer(VImage::option()->set("strip", true));
-
-    // Build thumbnail options from aguments
-    VOption* thumbnailOptions = VImage::option();
-    if (options.height > 0)
-        thumbnailOptions->set("height", options.height);
-    if (options.crop)
-        thumbnailOptions->set("crop", VIPS_INTERESTING_CENTRE);
-
-    // Now load vips thumbnail from that buffer
-    return VImage::thumbnail_buffer(imgBlob, options.width, thumbnailOptions);
-}
-
-
-/**
- * Save created image to file
- * @param img
- * @param fileName
- * @param options
- */
-void saveImage(VImage& img, const string& fileName, Opts& options)
-{
-    chrono::steady_clock::time_point begin_buildImage = chrono::steady_clock::now();
-
-    char * outName = const_cast<char *>(fileName.c_str());
-
-    string ext = fileName.substr(fileName.find_last_of('.') + 1);
-
-    // Supported image output formats
-    set<string> jpgExt = {"jpg", "jpeg", "JPG", "JPEG"};
-    set<string> pngExt = {"png", "PNG"};
-    set<string> tiffExt = {"tiff", "TIFF"};
-    set<string> ppmExt = {"ppm", "PPM"};
-
-    if (jpgExt.find(ext) != jpgExt.end()) {
-        img.jpegsave(outName, VImage::option()->set("Q", options.quality));
-    } else if (tiffExt.find(ext) != tiffExt.end()) {
-        img.autorot().tiffsave(outName, VImage::option()->set("strip", true));
-    } else if (pngExt.find(ext) != pngExt.end()) {
-        img.autorot().pngsave(outName);
-    } else if (ppmExt.find(ext) != ppmExt.end()) {
-        img.autorot().ppmsave(outName);
-    } else {
-        throw logic_error("Unknown image extension: " + ext);
-    }
-
-    chrono::steady_clock::time_point end_buildImage = chrono::steady_clock::now();
-    long buildImageTime = chrono::duration_cast<chrono::milliseconds>(end_buildImage - begin_buildImage).count();
-
-    if (VERBOSE) {
-        cout << "Saving image: " << buildImageTime << "ms" << endl;
-    }
-}
+#include "loader.hpp"
 
 /**
  * Sanity check: When you edit a HEIC image on iOS 11 it's saved as JPEG instead of HEIC but still has .heic ending.
@@ -430,8 +10,7 @@ void saveImage(VImage& img, const string& fileName, Opts& options)
  * So check if the file starts with an 'ftyp' box.
  * @param inputFilename
  */
-void sanityCheck(const string& inputFilename)
-{
+void sanityCheck(const string& inputFilename) {
     ifstream input(inputFilename);
     if (!input.is_open()) {
         throw logic_error("Could not open file " + inputFilename);
@@ -443,14 +22,13 @@ void sanityCheck(const string& inputFilename)
     if (bytes[4] != 'f' &&
         bytes[5] != 't' &&
         bytes[6] != 'y' &&
-        bytes[7] != 'p')
-    {
+        bytes[7] != 'p') {
         throw logic_error("No ftyp box found! This cannot be a HEIF image.");
     }
 }
 
 /**
- * Main entry point
+ * Main loop
  * @param inputFilename
  * @param outputFilename
  * @param options
@@ -488,15 +66,16 @@ int convert(const string& inputFilename, const string& outputFilename, Opts& opt
     // Get the actual image content from file
     VImage image;
     if (useEmbeddedThumbnail) {
-        image = getThumbnailImage(reader, contextId, gridItemId);
+        const uint32_t thmbId = findThumbnailId(&reader, contextId, gridItemId);
+        image = getThumbnailImage(reader, contextId, thmbId);
     } else {
-        image = getImage(reader, contextId, gridItemId, options.parallel);
+        image = getImage(reader, contextId, gridItemId, options);
     }
 
     chrono::steady_clock::time_point end_encode = chrono::steady_clock::now();
     long tileEncodeTime = chrono::duration_cast<chrono::milliseconds>(end_encode - begin_encode).count();
 
-    if (VERBOSE) {
+    if (options.verbose) {
         cout << "Export & decode HEVC: " << tileEncodeTime << "ms" << endl;
     }
 
@@ -515,7 +94,6 @@ int convert(const string& inputFilename, const string& outputFilename, Opts& opt
     return 0;
 }
 
-
 Opts getTifigOptions(cxxopts::Options& options)
 {
     Opts opts = {};
@@ -532,6 +110,8 @@ Opts getTifigOptions(cxxopts::Options& options)
         opts.parallel = true;
     if (options.count("thumbnail"))
         opts.thumbnail = true;
+    if (options.count("verbose"))
+        opts.verbose = true;
 
     return opts;
 }
@@ -561,7 +141,7 @@ int main(int argc, char* argv[])
                 ("o, output", "Output image path", cxxopts::value<string>())
                 ("q, quality", "Output JPEG quality", cxxopts::value<int>()
                         ->default_value("90")->implicit_value("90"))
-                ("v, verbose", "Verbose output", cxxopts::value<bool>(VERBOSE))
+                ("v, verbose", "Verbose output", cxxopts::value<bool>())
                 ("w, width", "Width of output image", cxxopts::value<int>())
                 ("h, height", "Height of output image", cxxopts::value<int>())
                 ("c, crop", "Smartcrop image to fit given size", cxxopts::value<bool>())
@@ -588,7 +168,7 @@ int main(int argc, char* argv[])
             chrono::steady_clock::time_point end = chrono::steady_clock::now();
             long duration = chrono::duration_cast<chrono::milliseconds>(end - begin).count();
 
-            if (VERBOSE) {
+            if (tifigOptions.verbose) {
                 cout << "Total Time: " << duration << "ms" << endl;
             }
         } else {
