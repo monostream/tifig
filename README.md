@@ -77,7 +77,10 @@ We release tifig as static binary that should work on any linux without installi
   * ~~Create independant static binary~~
   * ~~Keep exif metadata in coverted images~~
   * Cleanup and optimizing
-  * Replace Nokia library with ISOBMFF parser
+  * Replace Nokia library with DigiDNAs ISOBMFF parser
+  * Carry over colorprofiles
+  * Support single image HEIC
+  * Improve thumbnailing
   
 ## Software Used / Libraries
 
