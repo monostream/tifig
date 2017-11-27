@@ -69,7 +69,7 @@ When a size smaller than 240x240 is requested, tifig will automatically use the 
 
 ## Installing
 
-We release tifig as static binary that should work on any linux without installing dependencies. The only requirement is glibc with a minimal version of 2.14. Just copy the binary to /usr/local/bin or whereve you need it.
+We release tifig as static x86_64 binary that should work on any linux without installing dependencies. The only requirement is glibc with a minimal version of 2.14. Just copy the binary to /usr/local/bin or wherever you want to.
 
 ## ToDo's
 
