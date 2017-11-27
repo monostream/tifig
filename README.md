@@ -65,11 +65,11 @@ Export & decode HEVC: 105ms
 Saving image: 125ms
 Total Time: 234ms
 ```
-When a size smaller than 240x240 is requested, tifig will automatically use the embedded thumbnail.
+When a size smaller or equal to 240x240 is requested, tifig will automatically use the embedded thumbnail.
 
 ## Installing
 
-We release tifig as static x86_64 binary that should work on any linux without installing dependencies. The only requirement is glibc with a minimal version of 2.14. Just copy the binary to /usr/local/bin or wherever you want to.
+We release tifig as static x86_64 binary that should work on any linux without installing dependencies. The only requirement is glibc with a minimal version of 2.14. Just copy the binary to `/usr/local/bin` or wherever you want to.
 
 ## ToDo's
 
@@ -78,7 +78,7 @@ We release tifig as static x86_64 binary that should work on any linux without i
   * ~~Keep exif metadata in coverted images~~
   * Cleanup and optimizing
   * Replace Nokia library with DigiDNAs ISOBMFF parser
-  * Carry over colorprofiles
+  * Carry over color profiles
   * Support single image HEIC
   * Improve thumbnailing
   
