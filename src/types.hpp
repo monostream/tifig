@@ -18,6 +18,7 @@ struct RgbData
 
 struct Opts
 {
+    std::string outputPath = "";
     int width = 0;
     int height = 0;
     int quality = 90;

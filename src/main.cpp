@@ -34,7 +34,7 @@ void sanityCheck(const string& inputFilename) {
  * @param options
  * @return
  */
-int convert(const string& inputFilename, const string& outputFilename, Opts& options)
+int convert(const string& inputFilename, Opts& options)
 {
     sanityCheck(inputFilename);
 
@@ -87,7 +87,12 @@ int convert(const string& inputFilename, const string& outputFilename, Opts& opt
         image = createVipsThumbnail(image, options);
     }
 
-    saveImage(image, outputFilename, options);
+    if (!options.outputPath.empty()) {
+        saveOutputImageToFile(image, options);
+    }
+    else {
+        printOutputImageToStdout(image, options);
+    }
 
     vips_shutdown();
 
@@ -98,6 +103,8 @@ Opts getTifigOptions(cxxopts::Options& options)
 {
     Opts opts = {};
 
+    if (options.count("output"))
+        opts.outputPath = options["output"].as<string>();
     if (options.count("width"))
         opts.width = options["width"].as<int>();
     if (options.count("height"))
@@ -110,7 +117,7 @@ Opts getTifigOptions(cxxopts::Options& options)
         opts.parallel = true;
     if (options.count("thumbnail"))
         opts.thumbnail = true;
-    if (options.count("verbose"))
+    if (options.count("verbose") && !opts.outputPath.empty())
         opts.verbose = true;
 
     return opts;
@@ -132,7 +139,7 @@ int main(int argc, char* argv[])
 
         cxxopts::Options options(argv[0], "Converts iOS 11 HEIC images to practical formats");
 
-        options.positional_help("input_file output_file");
+        options.positional_help("input_file [output_file]");
 
         options.parse_positional(vector<string>{"input", "output"});
 
@@ -155,15 +162,14 @@ int main(int argc, char* argv[])
         if (options.count("version")) {
             printVersion();
             retval = 0;
-        } else if (options.count("input") && options.count("output")) {
+        } else if (options.count("input")) {
             string inputFileName = options["input"].as<string>();
-            string outputFileName = options["output"].as<string>();
 
             Opts tifigOptions = getTifigOptions(options);
 
             chrono::steady_clock::time_point begin = chrono::steady_clock::now();
 
-            retval = convert(inputFileName, outputFileName, tifigOptions);
+            retval = convert(inputFileName, tifigOptions);
 
             chrono::steady_clock::time_point end = chrono::steady_clock::now();
             long duration = chrono::duration_cast<chrono::milliseconds>(end - begin).count();
@@ -172,11 +178,11 @@ int main(int argc, char* argv[])
                 cout << "Total Time: " << duration << "ms" << endl;
             }
         } else {
-            cout << options.help() << endl;
+            cerr << options.help() << endl;
         }
     }
     catch (const cxxopts::OptionException& oe) {
-        cout << "error parsing options: " << oe.what() << endl;
+        cerr << "error parsing options: " << oe.what() << endl;
     }
     catch (const FileReaderException& fre) {
         cerr << "Could not read HEIF image: " << fre.what() << endl;

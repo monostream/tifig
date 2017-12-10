@@ -61,13 +61,17 @@ VImage createVipsThumbnail(VImage& img, Opts& options)
  * @param fileName
  * @param options
  */
-void saveImage(VImage& img, const string& fileName, Opts& options)
+void saveOutputImageToFile(VImage &img, Opts &options)
 {
+    if (options.outputPath.empty()) {
+        throw new logic_error("Can't save to file without 'outputPath' option");
+    }
+
     chrono::steady_clock::time_point begin_buildImage = chrono::steady_clock::now();
 
-    char * outName = const_cast<char *>(fileName.c_str());
+    char * outName = const_cast<char *>(options.outputPath.c_str());
 
-    string ext = fileName.substr(fileName.find_last_of('.') + 1);
+    string ext = options.outputPath.substr(options.outputPath.find_last_of('.') + 1);
 
     // Supported image output formats
     set<string> jpgExt = {"jpg", "jpeg", "JPG", "JPEG"};
@@ -93,6 +97,15 @@ void saveImage(VImage& img, const string& fileName, Opts& options)
     if (options.verbose) {
         cout << "Saving image: " << buildImageTime << "ms" << endl;
     }
+}
+
+void printOutputImageToStdout(VImage& img, Opts& options)
+{
+    VipsBlob* jpegBuffer = img.jpegsave_buffer(VImage::option()->set("Q", options.quality));
+
+    cout.write(static_cast<const char *>(jpegBuffer->area.data), jpegBuffer->area.length);
+
+    cout.flush();
 }
 
 #endif
