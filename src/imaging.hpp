@@ -6,30 +6,20 @@
 
 #include "types.hpp"
 
-extern "C" {
-    #include "vips-exif.h"
-};
-
 using namespace std;
 using namespace vips;
 
 /**
- * Parse exif data and set image fields
+ * Add Exif metadata to image
  * @param exifData
  * @return
  */
-void parseExif(DataVector &exifData, VImage &image)
+void addExifMetadata(DataVector &exifData, VImage &image)
 {
     uint8_t* exifDataPtr = &exifData[0];
     uint32_t exifDataLength = static_cast<uint32_t>(exifData.size());
 
     image.set(VIPS_META_EXIF_NAME, nullptr, exifDataPtr, exifDataLength);
-
-    int parseResult = vips_exif_parse(image.get_image());
-
-    if (parseResult != 0) {
-        throw logic_error("Failed to parse Exif data");
-    }
 }
 
 /**

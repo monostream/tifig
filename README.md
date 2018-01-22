@@ -8,25 +8,52 @@ Converts HEIF images created on iOS 11 devices as fast as ~~humanly~~ possible
 
 ## Build Dependencies
 
- * `libvips` >= 8.5
- * `libavcodec` >= 3.1
- * `libswscale` >= 3.1
- * `libexif` >= 0.6.14
- 
-Install the dependencies under a ubuntu based distribution (Should work for xenial, zesty and artful):
+ * `libvips` >= 8.6
+ * `libavcodec` >= 3.1 (ffmpeg)
+ * `libswscale` >= 3.1 (ffmpeg)
 
-```
-# sudo add-apt-repository -y ppa:dhor/myway
-# sudo add-apt-repository -y ppa:jonathonf/ffmpeg-3
-# suod apt-get update
-# sudo apt-get install libvips-dev libavcodec-dev libswscale-dev
-```
+#### macOS aka OSX
 
-On Mac OS X:
+This one-liner should get you going:
 
 ```
 # brew install vips ffmpeg
 ```
+
+#### Linux
+
+First of all, to just try out tifig, the easiest way is to [use one of our static builds](https://github.com/monostream/tifig/releases).
+
+However, if you do want to build from source, verify carefully that the minimally required versions are actually shipped and installed with your distro and release.
+
+For ffmpeg, check the output of:
+
+```
+ffmpeg -version
+```
+
+Assuming you are using a ubuntu based system, this should help if your versions of 'libavcodec' and 'libswscale' is too old:
+
+```
+# sudo add-apt-repository -y ppa:jonathonf/ffmpeg-3
+# suod apt-get update
+# sudo apt-get install libavcodec-dev libswscale-dev
+```
+
+Since tifig requires quite a modern version of `libvips`, building from source is probably required. [Follow the instructions here](http://jcupitt.github.io/libvips/install.html#building-libvips-from-a-source-tarball) .
+
+Again on ubuntu, something like this should do the trick:
+
+```
+sudo apt-get install build-essential pkg-config libglib2.0-dev libexpat1-dev libjpeg-dev libexif-dev libpng-dev libtiff-dev
+wget https://github.com/jcupitt/libvips/releases/download/v8.6.1/vips-8.6.1.tar.gz
+tar xzf vips-8.6.1.tar.gz
+cd vips-8.6.1
+./configure
+make
+sudo make install
+```
+
 
 ## Build
 

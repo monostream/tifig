@@ -25,7 +25,6 @@ find_package(PkgConfig)
 pkg_check_modules(AVCODEC libavcodec REQUIRED)
 pkg_check_modules(AVUTIL libavutil REQUIRED)
 pkg_check_modules(SWSCALE libswscale REQUIRED)
-pkg_check_modules(EXIF libexif REQUIRED)
 pkg_check_modules(VIPS vips-cpp REQUIRED)
 
 if (STATIC_BUILD)
@@ -34,7 +33,6 @@ if (STATIC_BUILD)
             ${AVCODEC_STATIC_LDFLAGS}
             ${AVUTIL_STATIC_LDFLAGS}
             ${SWSCALE_STATIC_LDFLAGS}
-            ${EXIF_STATIC_LDFLAGS}
             ${VIPS_STATIC_LDFLAGS}
             ${EXPAT_STATIC_LDFLAGS})
 else()
@@ -42,7 +40,6 @@ else()
             ${AVCODEC_LDFLAGS}
             ${AVUTIL_LDFLAGS}
             ${SWSCALE_LDFLAGS}
-            ${EXIF_LDFLAGS}
             ${VIPS_LDFLAGS})
 endif()
 
@@ -53,8 +50,7 @@ set(SOURCE_FILES
         src/imaging.hpp
         src/loader.hpp
         src/types.hpp
-        src/main.cpp
-        src/vips-exif.c)
+        src/main.cpp)
 set(TIFIG tifig)
 
 add_subdirectory(${LIBHEIF_DIR})
@@ -69,7 +65,6 @@ include_directories(lib/cxxopts/include)
 include_directories(${AVCODEC_INCLUDE_DIRS})
 include_directories(${AVUTIL_INCLUDE_DIRS})
 include_directories(${SWSCALE_INCLUDE_DIRS})
-include_directories(${EXIF_INCLUDE_DIRS})
 include_directories(${VIPS_INCLUDE_DIRS})
 
 target_link_libraries(${TIFIG} heifreader cxxopts pthread)

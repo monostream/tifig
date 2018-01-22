@@ -80,7 +80,7 @@ int convert(const string& inputFilename, Opts& options)
     }
 
     DataVector exifData = extractExifData(&reader, contextId, gridItemId);
-    parseExif(exifData, image);
+    addExifMetadata(exifData, image);
 
     if (createOutputThumbnail)
     {
@@ -190,8 +190,8 @@ int main(int argc, char* argv[])
     catch (const logic_error& le) {
         cerr << le.what() << endl;
     }
-    catch (...) {
-        cerr << "Conversion failed" << endl;
+    catch (exception& e) {
+        cerr << "Conversion failed:" << e.what() << endl;
     }
 
     return retval;
