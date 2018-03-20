@@ -7,3 +7,5 @@ RUN \
  cd /tifig/build &&\
  cmake .. &&\
  make
+
+ENTRYPOINT ["/tifig/build/tifig"]
