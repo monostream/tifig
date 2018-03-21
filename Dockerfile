@@ -8,4 +8,4 @@ RUN \
  cmake .. &&\
  make
 
-ENTRYPOINT ["/tifig/build/tifig"]
+CMD ["/tifig/build/tifig"]
