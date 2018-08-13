@@ -2,9 +2,10 @@
 
 Converts HEIF images created on iOS 11 devices as fast as ~~humanly~~ possible.
 
-*This project is an early alpha and still needs a lot of tweaking!*
+*NOTE*: While we do not have the time to actively maintain tifig anymore, it is functional at a very alpha state. We are open to new maintainers taking the lead. 
 
 [![Build Status](https://travis-ci.org/monostream/tifig.svg?branch=master)](https://travis-ci.org/monostream/tifig)
+
 
 
 ## Build Dependencies
