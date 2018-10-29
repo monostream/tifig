@@ -18,7 +18,7 @@ Converts HEIF images created on iOS 11 devices as fast as ~~humanly~~ possible
 
 This one-liner should get you going:
 
-    brew install cmake vips ffmpeg
+    brew install cmake vips ffmpeg pkg-config
 
 
 #### Linux
