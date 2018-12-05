@@ -7,3 +7,7 @@ RUN \
  cd /tifig/build &&\
  cmake .. &&\
  make
+
+ADD convert.sh /root/convert.sh
+
+RUN chmod +x /root/convert.sh
