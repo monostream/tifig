@@ -2,13 +2,29 @@
 
 Converts HEIF images created on iOS 11 devices as fast as ~~humanly~~ possible.
 
-*NOTE*: While we do not have the time to actively maintain tifig anymore, it is functional at a very alpha state. We are open to new maintainers taking the lead. 
+*NOTE*: While we do not have the time to actively maintain tifig anymore, it is functional at a very alpha state. We are open to new maintainers taking the lead.
 
 [![Build Status](https://travis-ci.org/monostream/tifig.svg?branch=master)](https://travis-ci.org/monostream/tifig)
 
 
+## OS X Quickstart with Docker
 
-## Build Dependencies
+This builds a container and exposes a script which runs the container to convert all files in a directory. The converter will transfer the modification dates of the original image.
+
+```bash
+git clone --recursive https://github.com/monostream/tifig.git
+cd tifig/
+```
+
+```bash
+docker build -t tifig .
+
+./convert.sh /absolute/path/to/folder/with/*.HEIC
+```
+
+## Building from source
+
+### Build Dependencies
 
  * `libvips` >= 8.6
  * `libavcodec` >= 3.1 (ffmpeg)
@@ -50,7 +66,7 @@ Again on ubuntu, something like this should do the trick:
     sudo make install
 
 
-## Build
+### Build
 
     git clone --recursive https://github.com/monostream/tifig.git
     mkdir tifig/build && cd tifig/build
@@ -87,15 +103,18 @@ Create a cropped thumbnail to match size exactly:
 
 When a size smaller or equal to 240x240 is requested, tifig will automatically use the embedded thumbnail.
 
+## Containers
 
-## Installing
+You can find a container on [Docker Hub](https://hub.docker.com/r/monostream/tifig/).
+
+## Linux Binaries
 
 We release tifig as static x86_64 binary that should work on any linux without installing dependencies. The only requirement is glibc with a minimal version of 2.14. Just copy the binary to `/usr/local/bin` or wherever you want to.
 
 
 ## ToDo's
 
-  * ~~Testing~~ 
+  * ~~Testing~~
   * ~~Create independant static binary~~
   * ~~Keep exif metadata in coverted images~~
   * Cleanup and optimizing
@@ -103,17 +122,12 @@ We release tifig as static x86_64 binary that should work on any linux without i
   * Carry over color profiles
   * Support single image HEIC
   * Improve thumbnailing
-  
+
 ## Software Used / Libraries
 
   * HEIF by Nokia Technologies https://github.com/nokiatech/heif
   * libvips https://github.com/jcupitt/libvips
   * ffmpeg https://www.ffmpeg.org/
   * cxxopts https://github.com/jarro2783/cxxopts
-  
+
 ***Suggestions for improvements and Pull Requests highly welcome!***
- 
-
-
-
-  
