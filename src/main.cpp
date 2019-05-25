@@ -16,13 +16,20 @@ void sanityCheck(const string& inputFilename) {
         throw logic_error("Could not open file " + inputFilename);
     }
 
-    char* bytes = new char[8];
-    input.read(bytes, 8);
+    char* bytes = new char[10];
+    input.read(bytes, 10);
 
-    if (bytes[4] != 'f' &&
-        bytes[5] != 't' &&
-        bytes[6] != 'y' &&
+    if (bytes[4] != 'f' ||
+        bytes[5] != 't' ||
+        bytes[6] != 'y' ||
         bytes[7] != 'p') {
+        // check the common case where it's actually a JPEG
+        if (bytes[6] == 'J' &&
+            bytes[7] == 'F' &&
+            bytes[8] == 'I' &&
+            bytes[9] == 'F') {
+            throw logic_error("No ftyp box found! This seems to be a JPEG image.");
+        }
         throw logic_error("No ftyp box found! This cannot be a HEIF image.");
     }
 }
