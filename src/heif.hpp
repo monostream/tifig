@@ -75,27 +75,28 @@ DataVector extractExifData(HevcImageFileReader* reader, uint32_t contextId, uint
 {
     IdVector exifItemIds;
     DataVector exifData;
+    DataVector result;
 
     reader->getReferencedToItemListByType(contextId, itemId, "cdsc", exifItemIds);
 
     if (exifItemIds.empty()) {
-        throw logic_error("Exif Data ID (cdsc) not found!");
+        cerr << "Warning: Exif Data ID (cdsc) not found!\n";
+    } else {
+        reader->getItemData(contextId, exifItemIds.at(0), exifData);
+
+        if (exifData.empty()) {
+            cerr << "Warning: Exif data is empty\n";
+        } else {
+            int exifOffset = findExifHeaderOffset(exifData);
+
+            if (exifOffset == -1) {
+                cerr <<  "Warning: Exif data not found\n";
+            } else {
+                uint64_t skipBytes = static_cast<uint64_t>(exifOffset);
+                result.insert(result.begin(),  exifData.begin() + skipBytes, exifData.end() - exifOffset);
+            }
+        }
     }
-
-    reader->getItemData(contextId, exifItemIds.at(0), exifData);
-
-    if (exifData.empty()) {
-        throw logic_error("Exif data is empty");
-    }
-
-    int exifOffset = findExifHeaderOffset(exifData);
-    if (exifOffset == -1) {
-        throw logic_error("Exif data not found");
-    }
-
-    DataVector result;
-    uint64_t skipBytes = static_cast<uint64_t>(exifOffset);
-    result.insert(result.begin(),  exifData.begin() + skipBytes, exifData.end() - exifOffset);
     return result;
 }
 
