@@ -55,7 +55,8 @@ int convert(const string& inputFilename, Opts& options)
     uint32_t gridItemId = gridItems.at(0);
 
     VIPS_INIT("tifig");
-    avcodec_register_all();
+    // deprecated since ffmpeg 4
+    /* avcodec_register_all(); */
 
     chrono::steady_clock::time_point begin_encode = chrono::steady_clock::now();
 
