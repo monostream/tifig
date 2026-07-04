@@ -57,7 +57,7 @@ int copyFrameInto(AVFrame* frame, uint8_t* dst, size_t dst_size)
  */
 AVCodecContext* getHEVCDecoderContext()
 {
-    AVCodec *codec = avcodec_find_decoder(AV_CODEC_ID_HEVC);
+    const AVCodec *codec = avcodec_find_decoder(AV_CODEC_ID_HEVC);
     AVCodecContext *c = avcodec_alloc_context3(codec);
 
     if (!c) {
